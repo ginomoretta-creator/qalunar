@@ -11,6 +11,7 @@
 \usepackage[margin=2.4cm]{geometry}
 \usepackage{hyperref}
 \usepackage{graphicx}
+\graphicspath{{../scripts/figures/}}
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{enumitem}
@@ -61,9 +62,9 @@
 % ------------------------------------------------------------------
 \begin{abstract}
 % ------------------------------------------------------------------
-We formulate low-thrust cislunar trajectory correction in the planar circular restricted three-body problem (CR3BP) as a quadratic unconstrained binary optimisation (QUBO) problem in which the decision variables are inherently binary engine on/off commands. This avoids the artificial quantisation error that arises when continuous pseudospectral trajectory coefficients are encoded into binary digits, complementing the continuous-coefficient QUBO transcription of De Grossi, Carbone et~al.~(2025). A first-order state-transition-matrix expansion around a reference trajectory yields a single-pass QUBO whose global minimum is reachable by exact classical (mixed-integer linear programming, brute force) and heuristic (simulated annealing) solvers, and is also expressible on D-Wave hardware. Because the linearisation is loose for long arcs, we introduce a sequential re-linearisation outer loop with a trust-region accept-or-reject step; the binary analogue of the continuous-side sequential linearisation in Carbone et~al. We also report a classical MILP baseline obtained by McCormick lifting, certified optimal up to $N{\approx}20$ decision steps, and a measured scaling sweep on the cislunar QUBO at $N$ up to $200$ that shows the \texttt{dwave-hybrid} Kerberos workflow finds lower-energy solutions than raw simulated annealing in $20$--$30 \times$ less wall time at $N \ge 100$.
+We formulate low-thrust cislunar trajectory correction in the planar circular restricted three-body problem (CR3BP) as a quadratic unconstrained binary optimisation (QUBO) problem whose decision variables are inherently binary engine on/off commands. Because the variables are not quantised approximations of a continuum, the formulation avoids the bit-precision floor of continuous-coefficient QUBO transcriptions and complements the pseudospectral approach of De Grossi, Carbone et~al.~(2025). A first-order state-transition-matrix expansion around a reference trajectory yields a single-pass QUBO that exact classical solvers (mixed-integer linear programming, brute force), heuristics (simulated annealing), and D-Wave hardware can all sample. Because the linearisation loosens on long arcs, we add a sequential re-linearisation outer loop with a trust-region accept-or-reject step --- the binary analogue of the continuous-side sequential linearisation of Carbone et~al.\ --- which is provably monotone in the true nonlinear miss and never returns a schedule worse than coast. A McCormick-lifted MILP baseline certifies global binary optimality up to $N \approx 20$ decision steps, and a measured scaling sweep up to $N = 200$ shows the \texttt{dwave-hybrid} Kerberos workflow finding lower-energy solutions than raw simulated annealing in $20$--$30\times$ less wall time at $N \ge 100$.
 
-A \emph{sliding-window} extension chains short single-arc QUBOs across many lunar revolutions, with an action-radius gate that suppresses scheduling far from the Moon and a velocity-only circular target that supplies a uniform braking signal in any orbital phase. The four mission phases (Earth ascent, cislunar correction, lunar capture, on-orbit station-keeping) are flown by a single \SI{100}{\kg} microsatellite using the native throttling envelope of one ion/Hall-class thruster with \SI{350}{\milli\newton} main for the spiral and the capture and \SI{5.4}{\milli\newton} for cruise and corrections. We demonstrate Phases 1\,$\to$\,2\,$\to$\,3 composed end-to-end: $\Delta v_\mathrm{total} \approx \SI{2502}{\meter\per\second}$ in $\sim$\SI{32}{\day}.
+A \emph{sliding-window} extension chains short single-arc QUBOs across many lunar revolutions, with an action-radius gate that suppresses scheduling far from the Moon and a velocity-only circular target that supplies a uniform braking signal in any orbital phase. The four mission phases (Earth ascent, cislunar correction, lunar capture, on-orbit station-keeping) are flown by a single \SI{100}{\kg} microsatellite using the native throttling envelope of one ion/Hall-class thruster: \SI{350}{\milli\newton} (main) for the spiral and the capture, \SI{5.4}{\milli\newton} (cruise) for corrections and station-keeping. Phases 1\,$\to$\,2\,$\to$\,3 compose end-to-end into a complete transfer with $\Delta v_\mathrm{total} \approx \SI{2502}{\meter\per\second}$ in $\sim$\SI{32}{\day}, every metre per second delivered by binary on/off commands.
 \end{abstract}
 
 \noindent\textbf{Keywords:} quantum annealing, QUBO, low-thrust trajectory optimisation, cislunar transfer, CR3BP, sequential linearisation, trust region.
@@ -238,13 +239,13 @@ $\dot{\Phimat} = (\partial f/\partial \xvec)\big|_{\xvec_\mathrm{coast}(t)}\,
 control, the impulse $\uvec_i \Delta t$ applied at $t_i$ shifts the
 final state by
 \(
-  \Phimat(t_i, t_f)\,\Bmat\, \uvec_i\, \Delta t,
+  \Phimat(t_f, t_i)\,\Bmat\, \uvec_i\, \Delta t,
 \)
-where $\Phimat(t_i, t_f) =
-\Phimat(t_f, t_0)\,\Phimat(t_0, t_i)$. Defining the per-variable
+where the STM mapping $t_i$ to $t_f$ is composed as $\Phimat(t_f, t_i) =
+\Phimat(t_f, t_0)\,\Phimat(t_i, t_0)^{-1}$. Defining the per-variable
 \emph{impulse response vector}
 \begin{equation}\label{eq:b-vec}
-  \bbvec_j \;=\; \Phimat(t_i, t_f)\, \Bmat\, \uvec_{c,i}\, \Delta t,
+  \bbvec_j \;=\; \Phimat(t_f, t_i)\, \Bmat\, \uvec_{c,i}\, \Delta t,
   \qquad j = c\, N + i,
 \end{equation}
 where $\uvec_{c,i}$ is the thrust vector for channel $c$ at step
@@ -611,7 +612,7 @@ The mission has four phases:
 \begin{enumerate}[leftmargin=1.5em, itemsep=1pt]
   \item[\textbf{Phase 1}] Earth ascent: an analytical Edelbaum spiral
     \cite{Edelbaum1961} from a high parking orbit
-    ($r \approx \SI{42164}{\km}$, GEO altitude) to a $r = 0.5$
+    ($r \approx \SI{42164}{\km}$, GEO radius) to a $r = 0.5$
     nondim ($\sim \SI{200000}{\km}$) orbit, followed by a
     continuous tangential boost into a Moon-bound trajectory.
     Both segments run at \emph{main} power as a single all-on
@@ -639,8 +640,8 @@ in isolation as a focused experiment
 Phase 4) and then composes Phases 1, 2, and 3 into a single
 end-to-end transfer (Sec.~\ref{sec:end-to-end}). The cislunar
 injection-correction sub-scenario used throughout
-Sec.~\ref{sec:lin-gap}--\ref{sec:nlp}--\ref{sec:multi-channel}
-is the Phase 2 segment of this mission, run in cruise mode.
+Secs.~\ref{sec:lin-gap}, \ref{sec:nlp}, and~\ref{sec:multi-channel}
+is the Phase~2 segment of this mission, run in cruise mode.
 Figure~\ref{fig:trajectory} shows the resulting trajectory for
 $v_\mathrm{inj}/v_\mathrm{circ} = 1.188$, $T = 4.0$ nondim
 ($\sim$17.4 days), $N = 20$.
@@ -704,9 +705,10 @@ from the two solvers on this scenario.
 \caption{Single-pass QUBO (a) versus iterative re-linearisation
 (b) on a long-arc cislunar correction at $T = 4$ nondim. The blue star is the target final state;
 the cross is the achieved final state. The single-pass solver
-predicts a $142\,000$~km miss and delivers $143\,000$~km. Meanwhile the iterative solver, after
-four iterations and three burns it lands within $4\,800$~km of
-the target, a $30\times$ reduction in true miss for the cost of
+predicts a $142\,000$~km miss and delivers $143\,000$~km ---
+essentially the coast outcome. The iterative solver, after four
+outer iterations and three burns, lands within $4\,800$~km of
+the target: a $30\times$ reduction in true miss for the cost of
 one extra burn. The operational regime of
 Phase~2 (Sec.~\ref{sec:end-to-end}) lands the corrected state
 within $\sim$$1\,900$~km of the target, inside the Moon SOI,
@@ -715,11 +717,13 @@ where the Phase-3 sliding-window scheduler takes over.}
 \end{figure}
 
 The figure shows the operational difference between the two
-methods. The single-pass schedule has the QUBO believing the
-linearised miss is small ($142\,000$~km predicted ${\approx}$
-$143\,000$~km true), but the linearisation around the unforced
-coast arc is so far from the actual thrust-applied dynamics at
-$T = 4$ that the schedule delivers essentially what coast would.
+methods. For the schedule it returns, the single-pass QUBO's
+prediction is even accurate ($142\,000$~km predicted,
+$143\,000$~km true) --- but that schedule is barely better than
+coast. The failure is one of \emph{ranking}: under the coast-arc
+linearisation the impulse-response vectors $\bbvec_j$
+misrepresent what the genuinely useful schedules would achieve
+at $T = 4$, so the QUBO never selects them.
 The iterative loop's first outer iteration relinearises around
 the single-pass schedule; subsequent iterations refine the
 linearisation about progressively closer trajectories until the
@@ -891,16 +895,19 @@ problem, not a mismatch between the two transcriptions.
 \centering
 \includegraphics[width=\linewidth]{fmincon_multistart.png}
 \caption{The Hermite--Simpson energy-optimal CR3BP transcription is
-nonconvex. \emph{Left:} for three boundary-condition cases, the
-feasible converged objectives of $32$ random multistarts (SLSQP);
-red bars mark distinct local minima. Nearly every feasible start
-reaches a different minimum, and the objective spread exceeds an
-order of magnitude. \emph{Right:} primary case~A, the distribution
-of feasible SLSQP minima (bars) with MATLAB \texttt{fmincon} results
-from the same seeds overlaid (orange triangles). The two optimisers
-scatter across the same multi-basin landscape --- \texttt{fmincon}
-even reaches a minimum beyond the SLSQP range --- but coincide to
-machine precision when seeded into a shared basin.}
+nonconvex. \emph{(a)}~Feasible converged objectives of $32$ random
+multistarts (SLSQP) for three boundary-condition cases: each dot is
+one run, the grey bar spans the min--max range, and the open diamond
+marks the canonical linear-interpolation seed. The label under each
+column counts distinct local minima over feasible runs --- in
+case~A every feasible start reaches a \emph{different} minimum, and
+the canonical seed ($J \approx 4.01$) sits far above the multistart
+best ($J \approx 1.41$). \emph{(b)}~Case~A solved by SLSQP (circles)
+and MATLAB \texttt{fmincon} (triangles) from six identical seeds;
+open markers are runs that ended infeasible. The optimisers descend
+into different basins in five of six seeds, yet agree to
+$\sim\!10^{-9}$ in the one shared basin (seed~3) --- the spread is
+genuine problem nonconvexity, not a transcription mismatch.}
 \label{fig:multistart}
 \end{figure}
 
@@ -977,8 +984,9 @@ the relaxation order-of-magnitude loose) and the choice is
 between the SA heuristic and the hybrid Kerberos workflow.
 Kerberos in this regime returns lower-energy solutions than
 SA in significantly less time, consistent with the design
-intent of dwave-hybrid, which decomposes the problem and runs
-classical heuristics on the parts in parallel.
+intent of \texttt{dwave-hybrid}~\cite{DWave2024}, which
+decomposes the problem and runs classical heuristics on the
+parts in parallel.
 
 The scientifically relevant claim is therefore not that quantum
 annealing offers an asymptotic speedup over classical brute force, but that the hybrid workflow architecture can
@@ -1155,7 +1163,14 @@ the linearisation about a reference trajectory is faithful enough
 that the squared-norm objective is a good proxy for the true miss.
 For the Earth--Moon injection-correction scenario considered here,
 the linearisation around the unforced coast arc has three regimes
-that the experiments of Sec.~\ref{sec:results} delineate.
+that the experiments of Sec.~\ref{sec:results} delineate: a
+\emph{single-pass-faithful} regime ($T \lesssim 2.5$ nondim,
+$\sim$\SI{11}{\day}, where one linearisation suffices), an
+\emph{iterative} regime ($2.5 \lesssim T \lesssim 5$, where
+Algorithm~1 closes the gap in a few outer iterations), and an
+\emph{abstention} regime ($T \gtrsim 5$, where the trust-region
+rule rejects every candidate and the method falls back to coast
+rather than return a misleading schedule).
 
 \paragraph{Trust-region rule as the operational difference.}
 Single-pass QUBO solves are routinely reported in the QA literature
@@ -1302,7 +1317,7 @@ Sapienza Universit\`a di Roma, under the supervision of Prof.\
 Antonio Paolozzi.
 
 % ==================================================================
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 % ==================================================================
 
   \bibitem{Carbone2025}

@@ -17,13 +17,16 @@ By default only Python SLSQP is run (fast, hundreds of solves). With
 two optimizers are compared on identical starting points -- confirming the
 multistart spread is a property of the problem, not of one optimizer.
 
-Outputs ``scripts/fmincon_multistart.png`` (objective spread per case + the
-primary-case histogram with the fmincon overlay) and ``fmincon_multistart.csv``.
+Outputs ``scripts/figures/fmincon_multistart.png`` (panel a: per-case strip
+plot of feasible converged objectives with the canonical seed marked;
+panel b: seed-by-seed SLSQP-vs-fmincon pairing on the primary case) and
+``scripts/figures/fmincon_multistart.csv``.
 
 Run::
 
     python -m scripts.run_fmincon_multistart                # SLSQP only
     python -m scripts.run_fmincon_multistart --with-matlab  # + fmincon subset
+    python -m scripts.run_fmincon_multistart --replot       # restyle from CSV
 """
 
 from __future__ import annotations
@@ -236,64 +239,169 @@ def _plot(
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
 
     plt.rcParams.update({
         "font.size": 10, "axes.titlesize": 11, "axes.labelsize": 10,
-        "legend.fontsize": 8, "xtick.labelsize": 9, "ytick.labelsize": 9,
+        "legend.fontsize": 8.5, "xtick.labelsize": 9, "ytick.labelsize": 9,
     })
 
-    fig, (ax_strip, ax_hist) = plt.subplots(
-        1, 2, figsize=(13, 5.2), constrained_layout=True,
+    fig, (ax_strip, ax_pair) = plt.subplots(
+        1, 2, figsize=(12.5, 5.0), constrained_layout=True,
+        gridspec_kw={"width_ratios": [1.15, 1.0]},
     )
+
+    blue = "#1f77b4"
+    orange = "#ff7f0e"
 
     # ---- (a) per-case strip plot of feasible objectives ----
+    #
+    # One column per BC case. Every feasible converged objective is a dot;
+    # the black diamond is the canonical linear-interpolation seed (seed 0).
+    # The x tick label reports distinct minima / feasible starts, which is
+    # the headline nonconvexity measure.
     names = list(slsqp_by_case.keys())
+    rng_jitter = np.random.default_rng(0)
     for j, name in enumerate(names):
-        feas = [r.objective for r in slsqp_by_case[name] if r.feasible]
-        x = np.full(len(feas), j) + np.random.default_rng(0).normal(
-            0, 0.04, size=len(feas))
-        ax_strip.scatter(x, feas, s=28, alpha=0.7, color="#1f77b4",
-                         edgecolors="none", zorder=3)
-        for m in summaries[name]["minima"]:
-            ax_strip.hlines(m, j - 0.25, j + 0.25, color="#d62728",
-                            lw=1.6, zorder=4)
-        ax_strip.text(j, max(feas) if feas else 0,
-                      f"  {summaries[name]['n_minima']} minima",
-                      fontsize=8, rotation=90, va="bottom", ha="center")
-    ax_strip.set_xticks(range(len(names)))
-    ax_strip.set_xticklabels(names, fontsize=8)
-    ax_strip.set_ylabel("Feasible converged objective J")
-    ax_strip.set_title("(a) Multistart objective spread (SLSQP)\n"
-                       "red bars = distinct local minima")
-    ax_strip.grid(axis="y", alpha=0.3)
+        results = slsqp_by_case[name]
+        feas = [(r.seed_index, r.objective) for r in results if r.feasible]
+        if not feas:
+            continue
+        objs = np.array([o for _, o in feas])
+        # Min-to-max range bar behind the dots.
+        ax_strip.plot([j, j], [objs.min(), objs.max()],
+                      color="0.85", lw=5, solid_capstyle="round", zorder=1)
+        x = j + rng_jitter.uniform(-0.07, 0.07, size=len(objs))
+        ax_strip.scatter(x, objs, s=30, alpha=0.85, color=blue,
+                         edgecolors="white", linewidths=0.5, zorder=3)
+        # Canonical seed (index 0) drawn on top as an open diamond.
+        for seed_idx, obj in feas:
+            if seed_idx == 0:
+                ax_strip.scatter([j], [obj], s=90, marker="D",
+                                 facecolors="none", edgecolors="black",
+                                 linewidths=1.4, zorder=4)
+        # Best objective annotated under the column.
+        ax_strip.annotate(f"best {objs.min():.2f}",
+                          xy=(j, objs.min()), xytext=(0, -14),
+                          textcoords="offset points",
+                          ha="center", fontsize=8.5, color="0.25")
 
-    # ---- (b) primary-case histogram with fmincon overlay ----
-    primary = slsqp_by_case[PRIMARY_CASE]
-    feas = [r.objective for r in primary if r.feasible]
-    ax_hist.hist(feas, bins=18, color="#1f77b4", alpha=0.75,
-                 label=f"SLSQP feasible (n={len(feas)})")
-    for m in summaries[PRIMARY_CASE]["minima"]:
-        ax_hist.axvline(m, color="#d62728", lw=1.4, ls="--")
+    counts = [
+        f"{summaries[n]['n_minima']}/{summaries[n]['n_feasible']}"
+        for n in names
+    ]
+    ax_strip.set_xticks(range(len(names)))
+    ax_strip.set_xticklabels(
+        [f"{n}\n{c} distinct minima" for n, c in zip(names, counts)],
+        fontsize=8.5,
+    )
+    ax_strip.set_xlim(-0.5, len(names) - 0.5)
+    ax_strip.set_ylim(bottom=0.0)
+    ax_strip.set_ylabel("Converged objective $J$ (feasible runs)")
+    ax_strip.set_title("(a) 32 random starts per case (SLSQP)")
+    ax_strip.grid(axis="y", alpha=0.3)
+    ax_strip.legend(handles=[
+        Line2D([], [], marker="o", ls="none", color=blue,
+               markeredgecolor="white", label="feasible local minimum"),
+        Line2D([], [], marker="D", ls="none", markerfacecolor="none",
+               markeredgecolor="black", label="canonical linear-interp seed"),
+    ], loc="upper right")
+
+    # ---- (b) same seeds, two optimisers (primary case) ----
+    #
+    # Seed-by-seed pairing of SLSQP and fmincon started from identical
+    # iterates: vertical separation = different basins; coincident markers
+    # = shared basin. Open markers are runs that ended infeasible.
     if matlab_primary is not None:
-        ml_feas = [r.objective for r in matlab_primary if r.feasible]
-        for k, v in enumerate(ml_feas):
-            ax_hist.scatter(v, 0.5, marker="v", s=90, color="#ff7f0e",
-                            edgecolors="black", zorder=5,
-                            label="fmincon (same seeds)" if k == 0 else None)
-    ax_hist.set_xlabel("Feasible converged objective J")
-    ax_hist.set_ylabel("count")
-    ax_hist.set_title(f"(b) Primary case {PRIMARY_CASE}: "
-                      "local-minima distribution")
-    ax_hist.legend(loc="upper right")
-    ax_hist.grid(axis="y", alpha=0.3)
+        slsqp_primary = {r.seed_index: r for r in slsqp_by_case[PRIMARY_CASE]}
+        for ml in matlab_primary:
+            sp = slsqp_primary.get(ml.seed_index)
+            if sp is None:
+                continue
+            i = ml.seed_index
+            ax_pair.plot([i, i], [sp.objective, ml.objective],
+                         color="0.75", lw=1.2, zorder=1)
+            ax_pair.scatter([i], [sp.objective], s=55, marker="o",
+                            facecolors=blue if sp.feasible else "none",
+                            edgecolors=blue, linewidths=1.4, zorder=3)
+            ax_pair.scatter([i], [ml.objective], s=65, marker="v",
+                            facecolors=orange if ml.feasible else "none",
+                            edgecolors=orange, linewidths=1.4, zorder=3)
+            gap = abs(sp.objective - ml.objective) / max(abs(sp.objective), 1e-30)
+            if gap < CLUSTER_REL_TOL and sp.feasible and ml.feasible:
+                ax_pair.annotate(
+                    "same basin:\n$|\\Delta J| \\approx 10^{-9}$",
+                    xy=(i, sp.objective), xytext=(i + 0.35, sp.objective + 4.0),
+                    fontsize=8.5, ha="left",
+                    arrowprops=dict(arrowstyle="->", color="0.3", lw=0.9),
+                )
+            elif i == 0:
+                # Near-coincident at this scale but genuinely distinct
+                # minima -- annotate so the pair is not misread as shared.
+                ax_pair.annotate(
+                    f"close but distinct:\n$\\Delta J = {gap * 100:.1f}\\%$",
+                    xy=(i, max(sp.objective, ml.objective)),
+                    xytext=(i - 0.45, sp.objective + 5.5),
+                    fontsize=8.5, ha="left",
+                    arrowprops=dict(arrowstyle="->", color="0.3", lw=0.9),
+                )
+        n_seeds = len(matlab_primary)
+        ax_pair.set_xticks(range(n_seeds))
+        ax_pair.set_xlim(-0.6, n_seeds - 0.4 + 0.8)
+        ax_pair.set_xlabel("shared seed index")
+        ax_pair.set_ylabel("Converged objective $J$")
+        ax_pair.set_title(f"(b) Case {PRIMARY_CASE.split()[0]}: "
+                          "same seed, two optimisers")
+        ax_pair.grid(axis="y", alpha=0.3)
+        ax_pair.legend(handles=[
+            Line2D([], [], marker="o", ls="none", color=blue,
+                   label="SLSQP (scipy)"),
+            Line2D([], [], marker="v", ls="none", color=orange,
+                   label="fmincon (MATLAB)"),
+            Line2D([], [], marker="o", ls="none", markerfacecolor="none",
+                   markeredgecolor="0.4", label="run ended infeasible"),
+        ], loc="upper left")
+    else:
+        ax_pair.text(0.5, 0.5, "fmincon cross-check not run\n"
+                     "(--with-matlab)", transform=ax_pair.transAxes,
+                     ha="center", va="center", fontsize=10, color="0.4")
+        ax_pair.set_axis_off()
 
     fig.suptitle(
-        "The Hermite-Simpson CR3BP NLP is nonconvex: multistart finds "
-        "multiple feasible local minima",
-        fontsize=12,
+        "The Hermite–Simpson energy-optimal CR3BP transcription "
+        "is nonconvex",
+        fontsize=12.5,
     )
-    fig.savefig(out_path, dpi=160, bbox_inches="tight")
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
     print(f"\n  figure written to {out_path}")
+
+
+def _load_results_csv(
+    csv_path: Path,
+) -> tuple[dict[str, list[StartResult]], list[StartResult] | None]:
+    """Rebuild the solver results from a previously written CSV.
+
+    Allows ``--replot`` to restyle the figure without re-running the
+    SLSQP multistart (minutes) or the MATLAB fmincon subset.
+    """
+    slsqp_by_case: dict[str, list[StartResult]] = {}
+    matlab_primary: list[StartResult] = []
+    with csv_path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            r = StartResult(
+                seed_index=int(row["seed_index"]),
+                objective=float(row["objective"]),
+                feasible=row["feasible"] == "True",
+                success=row["success"] == "True",
+                max_defect=float(row["max_defect"]),
+                max_bc_error=float(row["max_bc_error"]),
+                n_iterations=int(row["n_iterations"]),
+            )
+            if row["solver"] == "SLSQP":
+                slsqp_by_case.setdefault(row["case"], []).append(r)
+            else:
+                matlab_primary.append(r)
+    return slsqp_by_case, (matlab_primary or None)
 
 
 def main() -> None:
@@ -302,7 +410,24 @@ def main() -> None:
                     help="also run a subset of seeds through MATLAB fmincon")
     ap.add_argument("--n-starts", type=int, default=N_STARTS)
     ap.add_argument("--seed", type=int, default=12345)
+    ap.add_argument("--replot", action="store_true",
+                    help="regenerate the figure from the saved CSV "
+                         "without re-running any solver")
     args = ap.parse_args()
+
+    fig_dir = Path(__file__).resolve().parent / "figures"
+    if args.replot:
+        csv_path = fig_dir / "fmincon_multistart.csv"
+        if not csv_path.exists():
+            sys.exit(f"--replot: {csv_path} not found; run the sweep first.")
+        slsqp_by_case, matlab_primary = _load_results_csv(csv_path)
+        summaries = {
+            name: _summarize(name, results)
+            for name, results in slsqp_by_case.items()
+        }
+        _plot(summaries, slsqp_by_case, matlab_primary,
+              fig_dir / "fmincon_multistart.png")
+        return
 
     dyn = PlanarCR3BP(mu=EARTH_MOON_MU)
     cfg = DirectCollocationConfig(n_intervals=N_INTERVALS, maxiter=MAXITER, tol=TOL)
