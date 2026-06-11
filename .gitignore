@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.Python
+build/
+dist/
+.venv/
+venv/
+env/
+.ruff_cache/
+.mypy_cache/
+
+# MATLAB
+*.asv
+*.m~
+slprj/
+matlab/_io/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# QUBO / solver outputs
+*.mat
+qubo_v2_data_*.mat
+
+# D-Wave
+.dwave/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Project-specific
+outputs/
+figures/
+logs/

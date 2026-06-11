@@ -1,0 +1,611 @@
+\documentclass[10pt,aspectratio=169]{beamer}
+
+% ------------------------------------------------------------------
+% Theme
+% ------------------------------------------------------------------
+\usetheme{default}
+\usecolortheme{seahorse}
+\useinnertheme{rectangles}
+\useoutertheme{infolines}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{frametitle continuation}{}
+
+% ------------------------------------------------------------------
+% Packages
+% ------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, mathtools}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{siunitx}
+\usepackage{bm}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{enumitem}
+
+% ------------------------------------------------------------------
+% Notation (matching the paper)
+% ------------------------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bvec}[1]{\bm{#1}}
+\newcommand{\xvec}{\bvec{x}}
+\newcommand{\uvec}{\bvec{u}}
+\newcommand{\qvec}{\bvec{q}}
+\newcommand{\bbvec}{\bvec{b}}
+\newcommand{\dvec}{\bvec{d}}
+\newcommand{\rvec}{\bvec{r}}
+\newcommand{\Bmat}{\bvec{B}}
+\newcommand{\Qmat}{\bvec{Q}}
+\newcommand{\Wmat}{\bvec{W}}
+\newcommand{\Phimat}{\bvec{\Phi}}
+
+% ------------------------------------------------------------------
+% Colors
+% ------------------------------------------------------------------
+\definecolor{accent}{RGB}{0,90,158}
+\definecolor{accent2}{RGB}{200,80,30}
+\setbeamercolor{title}{fg=accent}
+\setbeamercolor{frametitle}{fg=accent}
+\setbeamercolor{structure}{fg=accent}
+
+% ------------------------------------------------------------------
+% Title
+% ------------------------------------------------------------------
+\title[Iterative Re-Linearisation Binary QUBO]
+{Iterative Re-Linearisation for a Naturally-Binary\\
+QUBO Formulation of\\
+Low-Thrust Cislunar Trajectory Scheduling}
+
+\subtitle{Project status and complete Earth--Moon mission demonstration}
+
+\author[Moretta]{Gino Luciano Moretta\\
+\small Supervisor: Prof.~Antonio Paolozzi}
+
+\institute[Sapienza]{School of Aerospace Engineering\\
+Sapienza Universit\`a di Roma}
+
+\date{May 2026}
+
+% ==================================================================
+\begin{document}
+
+% ------------------------------------------------------------------
+\begin{frame}[plain]
+\titlepage
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Outline}
+\tableofcontents
+\end{frame}
+
+% ==================================================================
+\section{Context and motivation}
+% ==================================================================
+
+\begin{frame}{Context: cislunar logistics and low-thrust trajectories}
+\begin{itemize}[itemsep=4pt]
+  \item Renewed interest in cislunar missions: lunar gateway, L1/L2
+    relay constellations, lunar surface logistics.
+  \item Demand for trajectory tools that scale to many revolutions
+    and tight timing.
+  \item Direct collocation NLP and indirect Pontryagin methods are
+    mature but rely on \emph{continuous-variable} nonlinear
+    programming.
+  \item Quantum annealing (QA) and the QUBO formalism have recently
+    been applied to interplanetary trajectory optimisation
+    (\textbf{De Grossi, Carbone et al., 2025} ---
+    \emph{Astrodynamics} 9:195--215).
+\end{itemize}
+
+\vspace{0.3em}
+\begin{block}{Carbone et al. baseline}
+Pseudospectral interpolation of state and control over the time
+interval, encode real-valued coefficients as binary digits, submit
+the resulting QUBO to D-Wave hybrid solvers. Earth--Mars results
+demonstrate QA reaching competitive solutions.
+\end{block}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Two ways to put low-thrust on a QUBO solver}
+\begin{columns}[T,onlytextwidth]
+\column{0.50\textwidth}
+\textbf{Carbone et al.\ (continuous-coefficient)}
+\begin{itemize}[leftmargin=1em, itemsep=2pt]
+  \item Pseudospectral coefficients are real-valued.
+  \item Encode each as $p$ bits.
+  \item Quantisation error $\sim O(2^{-p})$ per coefficient.
+  \item Natural for arbitrary-shape thrust profiles.
+  \item Best when inner least-squares is non-trivial.
+\end{itemize}
+
+\column{0.50\textwidth}
+\textbf{This work (naturally-binary)}
+\begin{itemize}[leftmargin=1em, itemsep=2pt]
+  \item Decisions are inherently binary:
+    $q_i \in \{0,1\}$ = engine on/off at step $i$.
+  \item No quantisation error: variables are not approximations
+    of a continuum.
+  \item Direct fit to pulse-driven thrusters.
+  \item $N$ qubits for $N$ time slots --- linear, not quadratic.
+\end{itemize}
+\end{columns}
+
+\vspace{0.5em}
+\begin{block}{Complementary niches}
+The two formulations target different aspects of low-thrust QA.
+This talk presents the second.
+\end{block}
+\end{frame}
+
+% ==================================================================
+\section{The mission}
+% ==================================================================
+
+\begin{frame}{One spacecraft, one thruster, four phases}
+\textbf{Spacecraft}: $\sim$\SI{100}{\kg} microsatellite,
+single ion/Hall-class thruster, native throttling.\\
+\textbf{Real comparison}: NEXT-C (25--\SI{235}{\milli\newton}),
+BepiColombo T6 (75--\SI{145}{\milli\newton}),
+DS4G (50--\SI{2500}{\milli\newton}).
+\medskip
+
+\begin{block}{Operating points used}
+\begin{itemize}[itemsep=2pt]
+  \item \emph{Main} power: \SI{350}{\milli\newton},
+    $a \approx \SI{3.5}{\milli\meter\per\second\squared}$.
+  \item \emph{Cruise} power: \SI{5.4}{\milli\newton},
+    $a \approx \SI{0.054}{\milli\meter\per\second\squared}$.
+\end{itemize}
+\textbf{Single physical system}, two of its native operating points.
+\end{block}
+
+\begin{block}{Phases}
+\begin{tabular}{lll}
+\textbf{Phase 1} & Earth ascent (GEO $\to$ parking $\to$ injection)
+   & main, tangential \\
+\textbf{Phase 2} & Cislunar correction (QUBO)
+   & cruise, tangential \\
+\textbf{Phase 3} & Lunar capture (sliding-window QUBO)
+   & main, anti-tangential \\
+\textbf{Phase 4} & Lunar-orbit station-keeping (QUBO)
+   & cruise, anti-tangential \\
+\end{tabular}
+\end{block}
+\end{frame}
+
+% ==================================================================
+\section{Problem and method}
+% ==================================================================
+
+\begin{frame}{Planar CR3BP and the scheduling decision space}
+\textbf{Equations of motion} (synodic frame, Earth at $(-\mu,0)$,
+Moon at $(1-\mu,0)$, $\mu \approx 0.01215$):
+\begin{align*}
+  \ddot x - 2\dot y &= \Omega_x(x,y) + u_x \\
+  \ddot y + 2\dot x &= \Omega_y(x,y) + u_y
+\end{align*}
+where $\Omega(x,y) = \tfrac{1}{2}(x^2+y^2) + (1-\mu)/r_1 + \mu/r_2 +
+\tfrac{1}{2}\mu(1-\mu)$.
+
+\medskip
+\textbf{Decision space}: $N$ time slots,
+$q_i \in \{0,1\}$, thrust direction is tangential, anti-tangential,
+or fixed. With $K$ direction channels, $M = K N$ binary decisions.
+
+\medskip
+\textbf{Optimisation problem}:
+\[
+  \min_{\qvec \in \{0,1\}^M}
+  \; \big\| \xvec(t_f; \qvec) - \xvec_\mathrm{target}\big\|_{\Wmat}^2
+  + \alpha\,\|\qvec\|_1
+  + (\text{exclusion penalty})
+\]
+where $\xvec(t_f; \qvec)$ is the final state of the
+\emph{nonlinear} CR3BP under schedule $\qvec$.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{From STM linearisation to a QUBO}
+\textbf{First-order STM expansion} around a coast trajectory:
+\[
+  \xvec(t_f; \qvec) \;\approx\;
+    \xvec_\mathrm{coast}(t_f) + \sum_{j=1}^M q_j\, \bbvec_j,
+  \quad
+  \bbvec_j = \Phimat(t_i,t_f)\,\Bmat\,\uvec_{c,i}\,\Delta t.
+\]
+
+\medskip
+Substituting into the squared-norm objective, with state gap
+$\dvec = \xvec_\mathrm{target} - \xvec_\mathrm{coast}(t_f)$:
+\[
+  E(\qvec) =
+  \Big\| \sum_j q_j\,\bbvec_j - \dvec\Big\|_{\Wmat}^2
+  + \alpha\sum_j q_j
+  = \qvec^\top \Qmat\, \qvec + \bvec{\ell}^\top \qvec + c_0
+\]
+
+\medskip
+A QUBO with $M$ logical qubits and dense couplings:
+\begin{itemize}[itemsep=2pt]
+  \item $Q_{jk} = \bbvec_j^\top \Wmat\, \bbvec_k$
+  \item $\ell_j = \alpha - 2\, \bbvec_j^\top \Wmat\, \dvec$
+  \item $c_0 = \dvec^\top \Wmat\, \dvec$ (energy offset)
+\end{itemize}
+
+\medskip
+$M$ scales \emph{linearly} in the discretisation, vs.\ quadratically
+for pseudospectral-coefficient QUBOs.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{The single-pass problem: linearisation gap}
+\centering
+\includegraphics[width=0.92\textwidth]{../scripts/iterative_vs_singlepass_trajectory.png}
+
+\smallskip
+\small
+\textbf{Same QUBO, two solve strategies}, $T = 4$ nondim ($\sim 17$ d):
+\begin{itemize}[itemsep=2pt]
+  \item \textbf{Single-pass} (left): predicted miss \SI{142000}{\km};
+    \emph{true nonlinear miss} \SI{143000}{\km} --- worse than
+    coast (\SI{22000}{\km}).
+  \item \textbf{Iterative re-linearisation} (right):
+    re-anchors the linear model around the current schedule;
+    converges in 4 outer iterations to \SI{4775}{\km} miss,
+    a $30\times$ reduction.
+\end{itemize}
+\end{frame}
+
+% ==================================================================
+\section{Iterative re-linearisation}
+% ==================================================================
+
+\begin{frame}{Algorithm 1: iterative re-linearisation with trust region}
+\small
+\textbf{Initialise} $\qvec^{(0)} = \bvec{0}$ (coast); compute
+$r^{(0)} = \|\xvec(t_f; \bvec{0}) - \xvec_\mathrm{target}\|$.
+
+\smallskip
+\textbf{Loop} $k = 0, 1, \dots, k_\mathrm{max} - 1$:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item Build QUBO linearised around $\qvec^{(k)}$.
+  \item Sample candidate $\hat\qvec$ (BF, MILP, SA, Kerberos, QPU).
+  \item If $\hat\qvec = \qvec^{(k)}$: terminate (fixed point).
+  \item Propagate nonlinear CR3BP under $\hat\qvec$;
+    obtain $\hat r$.
+  \item \textcolor{accent2}{\textbf{Trust-region:} if
+    $\hat r > r^{(k)}$, terminate (return $\qvec^{(k)}$).}
+  \item Set $\qvec^{(k+1)} = \hat\qvec$, $r^{(k+1)} = \hat r$.
+  \item If $r^{(k)} - r^{(k+1)} < \varepsilon_\mathrm{tol}$:
+    terminate.
+\end{itemize}
+
+\medskip
+\begin{block}{Proposition 1 (monotonicity)}
+The sequence $r^{(k)}$ is non-increasing,
+$r^{(0)} \ge r^{(1)} \ge \dots \ge r^{(K)}$. The algorithm
+terminates in finitely many iterations, and the returned
+schedule is at least as good as coast:
+$r^{(K)} \le r^{(0)}$.
+\end{block}
+\end{frame}
+
+% ==================================================================
+\section{Phase 2: cislunar correction}
+% ==================================================================
+
+\begin{frame}{Phase 2 results: $30\times$ improvement at \SI{16}{\meter\per\second}}
+\centering
+\includegraphics[width=0.95\textwidth]{../scripts/cislunar_trajectory.png}
+
+\smallskip
+\small
+\textbf{100 kg microsat, cruise mode (\SI{5.4}{\milli\newton}),
+$T = 4$ nondim ($\sim$\,17~d), $N = 20$.}
+Lunar closest approach: \SI{22000}{\km} (coast)
+$\to$ \SI{6000}{\km} (corrected) at $\Delta v = \SI{8.2}{\meter\per\second}$.
+\end{frame}
+
+% ==================================================================
+\section{Phase 4: station-keeping}
+% ==================================================================
+
+\begin{frame}{Phase 4: lunar-orbit station-keeping}
+\centering
+\includegraphics[width=0.92\textwidth]{../scripts/moon_orbit_stationkeeping.png}
+
+\smallskip
+\small
+\textbf{$5\,000$-km circular lunar orbit, $0.5\%$ tangential
+velocity perturbation at $t_0$.}
+Coast drifts \SI{1300}{\km} over 2 revolutions; QUBO maintains at
+\SI{530}{\km} miss for $\Delta v = \SI{4.4}{\meter\per\second}$,
+$2.4\times$ improvement.
+
+\medskip
+\textbf{Same iterative driver, position-only target weighting}
+$\Wmat = \mathrm{diag}(1,1,0,0)$.
+\end{frame}
+
+% ==================================================================
+\section{Phase 3: sliding-window lunar capture}
+% ==================================================================
+
+\begin{frame}{Phase 3: the multi-revolution challenge}
+\textbf{Phase 2 leaves the spacecraft hyperbolic at perilune}:
+$v_\mathrm{peri}/v_\mathrm{circ} \approx 1.49 > \sqrt{2}$.
+
+\medskip
+\textbf{To capture}: shed $\sim$\SI{67}{\meter\per\second} of
+excess velocity. With main thrust
+(\SI{3.5}{\milli\meter\per\second\squared}) over a
+$\sim 5$-hour close approach:
+$\Delta v_\mathrm{available} \approx \SI{63}{\meter\per\second}$ ---
+\emph{just barely enough}.
+
+\medskip
+\textbf{Single-arc QUBO would fail}: the linearisation gap over a
+multi-revolution capture exceeds the trust-region tolerance.
+
+\medskip
+\textbf{Solution}: a \emph{sliding-window} structure. Each window
+is a short arc with its own iterative re-linearisation; between
+windows the spacecraft drifts under true CR3BP.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Sliding-window: window cap + action-radius gate}
+\textbf{Window cap}: $\Delta T_\mathrm{max}$ fixed (e.g.
+\SI{0.01}{} nondim $\sim 1$~h) so that the local linearisation
+remains faithful even when the orbit is loose
+($T_\mathrm{loc} = 2\pi\sqrt{r^3/\mu}$ diverges; we cap the
+window).
+
+\medskip
+\textbf{Action-radius gate}: skip QUBO scheduling when the
+spacecraft is far from the Moon (Earth-perturbed regime). Drift
+freely instead.
+
+\medskip
+\textbf{Per-window target} (velocity-only):
+\[
+  \xvec_\mathrm{target}^{(w)} = \big[\rvec_\mathrm{eow},\;
+    v_\mathrm{circ}(\|\rvec_\mathrm{eow} - \rvec_\mathrm{Moon}\|)
+    \,\hat{\bvec{v}}_\mathrm{Moon\text{-}rel}^{\,\mathrm{eow}}\big]
+\]
+``Stay where the unforced trajectory takes you, but slow to
+local circular speed.''
+
+\medskip
+\textbf{Effect}: anti-tangential channel fires near perilune
+(where $v > v_\mathrm{circ}$); stays off at apolune
+(can't speed up). Energy decreases monotonically per accepted
+window.
+\end{frame}
+
+% ==================================================================
+\section{End-to-end mission}
+% ==================================================================
+
+\begin{frame}{End-to-end mission overview}
+\centering
+\includegraphics[width=0.86\textwidth]{../scripts/mission_overview.png}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Continuity across phases}
+\centering
+\includegraphics[width=0.95\textwidth]{../scripts/mission_continuity.png}
+
+\smallskip
+\small
+The trajectory is \emph{physically continuous}: the perilune is a
+point on the curve, not a discontinuity. Cumulative $\Delta v$
+rises monotonically across phases.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Mission $\Delta v$ breakdown}
+\begin{table}
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lrrl}
+\toprule
+\textbf{Phase} & $\bm{\Delta v}$ \textbf{(m/s)} & \textbf{TOF (d)}
+   & \textbf{Mode} \\
+\midrule
+1: Edelbaum spiral + injection boost
+  & \num{1924} & \num{6.4} & main, tangential \\
+2: Cislunar correction (QUBO)
+  & \num{16}   & \num{17.4} & cruise, tangential \\
+3: Sliding-window QUBO capture
+  & \num{561}  & \num{8.0}  & main, anti-tangential \\
+\midrule
+\textbf{Total}
+  & \textbf{\num{2502}} & \textbf{\num{31.8}} & \textbf{all binary} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\medskip
+\begin{itemize}[itemsep=3pt]
+  \item Phase 1 dominates the budget (Earth gravity well).
+  \item Phase 3 second largest cost (capture).
+  \item Phase 2 is essentially free in $\Delta v$, but
+    \emph{enables the rest of the mission} ---
+    without correction the \SI{22000}{\km} miss precludes any
+    usable perilune passage.
+  \item All $\Delta v$ delivered by binary on/off commands of one
+    thruster.
+\end{itemize}
+\end{frame}
+
+% ==================================================================
+\section{Sensitivity, comparison, future work}
+% ==================================================================
+
+\begin{frame}{Sliding-window parameter sensitivity}
+\small
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Configuration & $\Delta v$ (m/s) & burns & $r_\mathrm{apo}^{(f)}$ (km) \\
+\midrule
+$\Delta T_\mathrm{max} = 0.005$ & 2.6  & 300 & 14488 \\
+$\Delta T_\mathrm{max} = 0.040$ \emph{(baseline)} & 11.9 & 175 & 13660 \\
+$\Delta T_\mathrm{max} = 0.080$ & 33.8 & 255 & 12824 \\
+\midrule
+brake $= 0.80$ & 34.0 & 499 & 13194 \\
+brake $= 1.00$ \emph{(baseline)} & 11.9 & 175 & 13660 \\
+brake $= 1.20$ & 4.0  & 59  & 14128 \\
+\midrule
+action $r$: any value $\ge 0.04$ &
+   \multicolumn{3}{l}{identical (gate not triggered for bound orbit)} \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{itemize}[itemsep=2pt]
+  \item Window cap is the elbow of the linearisation/throughput
+    trade-off.
+  \item Brake factor trades fuel efficiency vs.\ apolune-shrinkage
+    rate.
+  \item Action radius is a safety net: zero effect once the orbit
+    is bound.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Comparison with state-of-the-art (NLP)}
+Benchmark vs.\ in-house Hermite-Simpson direct collocation
+($T = 3$ nondim, $v_\mathrm{inj}/v_\mathrm{circ} = 1.187$):
+
+\medskip
+\centering
+\begin{tabular}{lccc}
+\toprule
+Method & Miss (km) & $\Delta v$ (m/s) & Solve time (s) \\
+\midrule
+QUBO iter.\ ($N = 15$) & 1\,087  & 8.2 & 4.6 \\
+NLP HS-direct & 0.0 & 8.8 & 3.2 \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\begin{itemize}[itemsep=3pt]
+  \item NLP wins on accuracy: zero miss at comparable $\Delta v$.
+  \item NLP solution is a \emph{continuous-thrust} schedule;
+    requires post-processing to pulse-mode (re-introduces a
+    discrete-action gap).
+  \item QUBO schedule is \emph{directly executable} on a
+    pulse-driven engine.
+  \item QUBO trade: action-space realism for tractability.
+  \item NLP is the right tool when thrust can be modulated
+    continuously; QUBO is the right tool when the engine is
+    genuinely binary.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Where this can compete}
+\textbf{Niche fit (3--5 years horizon):}
+\begin{itemize}[itemsep=3pt]
+  \item Cubesat / microsat with pulse-mode propulsion (no
+    throttling) --- direct QUBO match.
+  \item Real-time on-board correction (QUBO is pre-built; sampler
+    can run in milliseconds).
+  \item Constellation / swarm scheduling (combinatorial decision
+    space).
+  \item Hard discrete constraints (exclusion windows, time
+    windows).
+\end{itemize}
+
+\medskip
+\textbf{Where NLP / DDP / indirect methods will keep winning:}
+\begin{itemize}[itemsep=3pt]
+  \item Globally $\Delta v$-optimal interplanetary missions
+    (BepiColombo, JUICE).
+  \item Continuously throttled thruster optimisation.
+  \item Mature commercial frameworks (GPOPS-II, GMAT, Copernicus).
+\end{itemize}
+
+\medskip
+\textbf{Differentiator}: trust-region rigorous + naturally-binary +
+hardware-quantum-ready in one framework. Each piece exists
+elsewhere; the combination is novel.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Limitations and future work}
+\textbf{Within this paper:}
+\begin{itemize}[itemsep=2pt]
+  \item Phase 3 reaches $\sim$\,\SI{4500}{\km} altitude bound
+    orbit, not the \SI{100}{\km} target LLO. Continuing the
+    sliding-window further reaches LLO at additional $\Delta v$.
+  \item Single-channel for Phases 2 and 3; multi-channel (tangential
+    + normal + binormal) supported but not swept parametrically.
+  \item Planar CR3BP only; 3D extension is mechanical (no
+    methodological change).
+\end{itemize}
+
+\medskip
+\textbf{Natural follow-up:}
+\begin{itemize}[itemsep=2pt]
+  \item D-Wave Leap Hybrid / Advantage-2 hardware results
+    (sampler interface ready; only credentials missing).
+  \item Four-body model (Earth--Moon--Sun) admits weak-stability
+    boundary trajectories with near-parabolic perilune speed.
+  \item Adaptive sliding-window (window length, brake factor,
+    action radius chosen autonomously).
+\end{itemize}
+\end{frame}
+
+% ==================================================================
+\section{Conclusion}
+% ==================================================================
+
+\begin{frame}{Conclusions}
+\begin{itemize}[itemsep=4pt]
+  \item Naturally-binary QUBO formulation of low-thrust cislunar
+    scheduling, complementary to Carbone et al.'s
+    continuous-coefficient formulation.
+  \item Iterative re-linearisation with trust-region: \emph{formal
+    monotonicity guarantee} (Proposition 1) that single-pass
+    solves do not have.
+  \item Sliding-window extension chains short arcs across many
+    revolutions, with a window-length cap and an action-radius
+    gate that confine scheduling to the linearisation-faithful
+    regime.
+  \item One spacecraft, one throttleable thruster, four phases:
+    end-to-end Earth--Moon mission delivered in
+    $\sim\!\SI{32}{\day}$ at
+    $\Delta v_\mathrm{total} \approx
+    \SI{2502}{\meter\per\second}$,
+    \emph{all binary}, no impulsive burns.
+  \item Test suite: 264 / 264 passing. Paper: 20 pages, 5 figures,
+    5 tables. All code reproducible from
+    \texttt{scripts/run\_full\_mission\_demo.py}.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}[plain]
+\centering
+\vspace{2em}
+{\Large \textbf{Thank you}}\par
+\vspace{1em}
+{\large Questions?}\par
+\vspace{2em}
+\small
+\texttt{morettaginoluciano@gmail.com}\\
+\medskip
+School of Aerospace Engineering\\
+Sapienza Universit\`a di Roma
+\end{frame}
+
+\end{document}

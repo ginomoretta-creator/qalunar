@@ -1,0 +1,16 @@
+# Core scientific stack
+numpy>=1.24
+scipy>=1.11
+matplotlib>=3.7
+
+# D-Wave Ocean SDK components
+dimod>=0.12
+dwave-neal>=0.6
+dwave-system>=1.21
+dwave-preprocessing>=0.6
+minorminer>=0.2
+dwave-networkx>=0.8
+
+# Dev / test
+pytest>=7.4
+pytest-cov>=4.1

@@ -1,0 +1,2573 @@
+\documentclass[8pt,a4paper]{article}
+
+% ------------------------------------------------------------------
+% Packages
+% ------------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{siunitx}
+\usepackage{bm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+% ------------------------------------------------------------------
+% Notation shortcuts
+% ------------------------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\bvec}[1]{\bm{#1}}
+\newcommand{\xvec}{\bvec{x}}
+\newcommand{\uvec}{\bvec{u}}
+\newcommand{\fvec}{\bvec{f}}
+\newcommand{\lamr}{\bvec{\lambda}_r}
+\newcommand{\lamv}{\bvec{\lambda}_v}
+\newcommand{\Omegax}{\Omega_x}
+\newcommand{\Omegay}{\Omega_y}
+\newcommand{\Omegaxx}{\Omega_{xx}}
+\newcommand{\Omegayy}{\Omega_{yy}}
+\newcommand{\Omegaxy}{\Omega_{xy}}
+\newcommand{\Amat}{\bvec{A}}
+\newcommand{\Bmat}{\bvec{B}}
+\newcommand{\Qmat}{\bvec{Q}}
+\newcommand{\Vr}{\bvec{V}_r}
+\newcommand{\Ddec}{\bvec{D}_{\mathrm{dec}}}
+\newcommand{\Fmat}{\bvec{F}}
+\newcommand{\Hmat}{\bvec{H}}
+\newcommand{\TT}{^{\mathsf{T}}}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  breaklines=true,
+  tabsize=2
+}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+
+% ------------------------------------------------------------------
+\title{Quantum Annealing for Earth--Moon Low-Thrust Trajectory Optimization}
+\author{Gino Luciano Moretta \\
+  \small Sapienza Universit\`a di Roma, supervisor Prof.\ A.\ Paolozzi, E. Ortore}
+\date{Last updated: April 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+% ==================================================================
+\section{Project overview}
+% ==================================================================
+
+\paragraph{Research goal.}
+Extend the pseudospectral quantum-annealing transcription framework of
+De~Grossi, Carbone et~al.\ (\emph{Astrodynamics} 9:195--215,
+2025)~\cite{Carbone2025} from Earth--Mars interplanetary low-thrust
+transfers to \textbf{Earth--Moon} low-thrust transfers in the planar
+circular restricted three-body problem (CR3BP), and evaluate the
+resulting problem on D-Wave's \textbf{Advantage 2} system (and its
+nonlinear hybrid solver) as part of a six-month research project in
+aerospace engineering at Sapienza.
+
+\paragraph{Companion paper.}
+The scientific account of the on/off scheduling formulation, the
+iterative re-linearisation methodology, the classical
+mixed-integer-linear-programming baseline, and the experimental
+results on the cislunar injection-correction scenario is given in
+the companion paper, \emph{Iterative Re-Linearisation for a
+Naturally-Binary QUBO Formulation of Low-Thrust Cislunar Trajectory
+Scheduling} (\texttt{paper/paper.tex}). This manual is the
+technical reference for the implementation: it covers the full
+codebase end-to-end, including the earlier continuous-coefficient
+QUBO that the project pivoted away from, and is intended for
+developers and reviewers reading the source.
+
+\paragraph{Why the Earth--Moon case is harder.}
+Carbone et al.\ worked in an \emph{inertial two-body}
+(Keplerian~$+$~small~perturbations) setting where the dynamics are
+essentially linear around the reference heliocentric arc. The
+Earth--Moon CR3BP in the rotating (\textbf{synodic}) frame is
+\emph{genuinely nonlinear}: the gradient of the pseudo-potential
+contains $1/r^2$ terms that blow up near each primary. A single-shot
+least-squares $\rightarrow$ QUBO pipeline cannot accommodate this
+directly, so we layer a \textbf{sequential linearization outer loop}
+on top of the QUBO solver, at each iteration the nonlinear
+dynamics are linearized about the current best trajectory, a new
+linear system is built, and the QUBO solver is called again.
+
+\paragraph{Two transcription philosophies.}
+There are two principled ways to convert an optimal control problem
+into a linear residual system that can be fed into a QUBO:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+  \item \textbf{Direct}: discretize state and control at a set of
+    collocation nodes (e.g.\ Legendre--Gauss--Lobatto), and write the
+    dynamics constraints as algebraic residuals. Carbone et al.\ use
+    this approach with LGL nodes and a Lagrange-polynomial
+    differentiation matrix.
+  \item \textbf{Indirect}: apply Pontryagin's Minimum Principle
+    analytically to eliminate the control (for an energy-minimizing
+    cost, $\uvec^\star = -\lamv$), obtain the two-point boundary value
+    problem for state \emph{and} costate, and then discretize by a
+    trial-function expansion. Gino's existing v2 rendezvous code uses
+    this path with \textbf{Theory of Functional Connections (TFC)}
+    switching functions plus an \textbf{Extreme Learning Machine
+    (ELM)} basis for the free part of the solution.
+\end{itemize}
+
+This project will implement \textbf{both} and compare them on the
+same Earth--Moon benchmark. The indirect TFC+ELM pipeline is
+implemented first because it reuses almost all of Gino's validated
+rendezvous machinery; the direct LGL pipeline is implemented second
+as a baseline.
+
+
+% ==================================================================
+\section{Units and the planar CR3BP}
+% ==================================================================
+
+\subsection{Nondimensionalization}
+
+We work in \textbf{canonical CR3BP units}. Let $m_1$ (Earth) and
+$m_2$ (Moon) be the two primaries, $a$ the semi-major axis of their
+mutual orbit, and $n$ the mean motion. Define:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{Length unit} $L = a \approx 384\,400~\si{km}$.
+  \item \textbf{Time unit} $T = 1/n$; one nondimensional time unit
+    corresponds to roughly $4.343~\si{days} \approx 3.757 \times 10^5~\si{s}$.
+  \item \textbf{Mass unit} $m_1 + m_2$, so the mass parameter is
+    \[
+      \mu \;=\; \frac{m_2}{m_1 + m_2}
+          \;\approx\; 0.012\,150\,583\,925\,359
+          \quad (\text{Earth--Moon}).
+    \]
+\end{itemize}
+
+With this scaling, the gravitational constant times total mass is
+unity, and the angular velocity of the rotating (synodic) frame is
+$\omega = 1$. The primaries become \emph{stationary} on the $x$-axis:
+
+\[
+  \bvec{r}_{\oplus}^{\mathrm{syn}} = (-\mu,\, 0),
+  \qquad
+  \bvec{r}_{\text{Moon}}^{\mathrm{syn}} = (1 - \mu,\, 0).
+\]
+
+\begin{remark}
+This is why the CR3BP is such a clean playground for mission design:
+in the synodic frame, geometry is frozen, and the dynamics become a
+time-invariant vector field on a 4D phase space.
+\end{remark}
+
+\subsection{Equations of motion}
+
+Let $\xvec = (x, y)$ be the synodic position and $\uvec = (u_x, u_y)$
+the thrust-acceleration control (low-thrust is modelled as a
+continuous acceleration, not an impulsive $\Delta v$). The planar
+CR3BP with control reads
+
+\begin{equation}
+\boxed{
+  \begin{aligned}
+    \ddot{x} &= \phantom{-}2\dot{y} + \Omegax(x, y) + u_x, \\
+    \ddot{y} &=           -2\dot{x} + \Omegay(x, y) + u_y,
+  \end{aligned}
+}
+\label{eq:cr3bp}
+\end{equation}
+
+where the pseudo-potential $\Omega$ and its gradient are
+
+\begin{align}
+  \Omega(x, y) &= \tfrac12 (x^2 + y^2) + \frac{1-\mu}{r_1}
+     + \frac{\mu}{r_2} + \tfrac12 \mu(1-\mu), \\[4pt]
+  \Omegax(x,y) &= x - \frac{(1-\mu)(x+\mu)}{r_1^3}
+     - \frac{\mu(x - 1 + \mu)}{r_2^3}, \\
+  \Omegay(x,y) &= y - \frac{(1-\mu)\,y}{r_1^3} - \frac{\mu\,y}{r_2^3},
+\end{align}
+
+with distances from the two primaries
+
+\[
+  r_1 = \sqrt{(x+\mu)^2 + y^2}, \qquad
+  r_2 = \sqrt{(x - 1 + \mu)^2 + y^2}.
+\]
+
+The two $2\dot{y}$ and $-2\dot{x}$ terms are the \textbf{Coriolis
+coupling} from the rotating frame; the centrifugal contribution has
+been absorbed into the $\tfrac12(x^2+y^2)$ part of $\Omega$.
+
+In first-order form with state $\xvec = (x, y, v_x, v_y)$:
+
+\begin{equation}
+  \dot{\xvec} \;=\; \fvec(\xvec) + \Bmat \uvec,
+  \qquad
+  \Bmat \;=\;
+  \begin{pmatrix}
+    0 & 0 \\ 0 & 0 \\ 1 & 0 \\ 0 & 1
+  \end{pmatrix},
+  \qquad
+  \fvec(\xvec) \;=\;
+  \begin{pmatrix}
+    v_x \\ v_y \\
+    2 v_y + \Omegax \\
+    -2 v_x + \Omegay
+  \end{pmatrix}.
+\label{eq:cr3bp-1st-order}
+\end{equation}
+
+This is the form consumed by \texttt{PlanarCR3BP.rhs} in the code.
+
+\subsection{The Jacobi integral}
+
+Along any unforced ($\uvec = \bm 0$) trajectory, the CR3BP conserves
+the \textbf{Jacobi integral}
+
+\begin{equation}
+  C_J(\xvec) \;=\; 2\,\Omega(x, y) \;-\; v_x^2 \;-\; v_y^2.
+  \label{eq:jacobi}
+\end{equation}
+
+This is the CR3BP's analogue of mechanical energy (in the synodic
+frame) and is the single most useful sanity check for any integrator
+or transcription: a pure-drift propagator that lets $C_J$ wander
+immediately gives away a bug. The code verifies $C_J$ conservation to
+$<10^{-8}$ over $10^3$ RK4 steps as a unit test.
+
+\subsection{Lagrange points}
+
+Equation~\eqref{eq:cr3bp} has \textbf{five} equilibria in the rotating
+frame --- the five Lagrange points $L_1, L_2, L_3$ (collinear, on the
+$x$-axis) and $L_4, L_5$ (triangular, on the equilateral triangles
+with the primaries). For Earth--Moon:
+
+\begin{center}
+\begin{tabular}{lccc}
+  \toprule
+  Point & Approx.\ $x$ & Approx.\ $y$ & Stability (linear) \\
+  \midrule
+  $L_1$ & $0.8369$ & $0$ & saddle--center \\
+  $L_2$ & $1.1557$ & $0$ & saddle--center \\
+  $L_3$ & $-1.0051$ & $0$ & saddle--center \\
+  $L_4$ & $0.5 - \mu$ & $+\sqrt{3}/2$ & stable ($\mu < 0.0385$) \\
+  $L_5$ & $0.5 - \mu$ & $-\sqrt{3}/2$ & stable \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+The triangular points $L_4$ and $L_5$ sit at the apex of the
+equilateral triangles $\oplus\text{--}\text{Moon}\text{--}L_{4/5}$,
+i.e.\ at $r_1 = r_2 = 1$, and --- because of this and a minor bookkeeping
+cancellation --- the Jacobi integral there is \emph{exactly} $C_J = 3$
+independently of $\mu$.
+
+\subsection{Linearization of~\eqref{eq:cr3bp}}
+\label{sec:linearization}
+
+The QUBO pipeline downstream is fundamentally a \emph{linear}
+least-squares engine; it needs the dynamics to be linear in the
+unknowns. For the CR3BP we therefore linearize~\eqref{eq:cr3bp} about
+a \textbf{nominal trajectory} $\bar{\xvec}(t) = (\bar x(t), \bar
+y(t), \bar v_x(t), \bar v_y(t))$ and solve for the
+\emph{deviation} $\delta\xvec = \xvec - \bar{\xvec}$.
+
+Taylor-expanding $\Omegax$ and $\Omegay$:
+
+\begin{equation}
+  \begin{aligned}
+    \Omegax(x, y) &\approx \Omegax(\bar x, \bar y)
+       + \Omegaxx(\bar x, \bar y)\,\delta x
+       + \Omegaxy(\bar x, \bar y)\,\delta y, \\
+    \Omegay(x, y) &\approx \Omegay(\bar x, \bar y)
+       + \Omegaxy(\bar x, \bar y)\,\delta x
+       + \Omegayy(\bar x, \bar y)\,\delta y,
+  \end{aligned}
+\end{equation}
+
+where the Hessian components are
+
+\begin{equation}
+  \Omegaxx = 1 - \frac{1-\mu}{r_1^3} - \frac{\mu}{r_2^3}
+       + \frac{3(1-\mu)(x+\mu)^2}{r_1^5}
+       + \frac{3\mu(x - 1 + \mu)^2}{r_2^5},
+\label{eq:omega-xx}
+\end{equation}
+\begin{equation}
+  \Omegayy = 1 - \frac{1-\mu}{r_1^3} - \frac{\mu}{r_2^3}
+       + \frac{3(1-\mu)\,y^2}{r_1^5} + \frac{3\mu\,y^2}{r_2^5},
+\label{eq:omega-yy}
+\end{equation}
+\begin{equation}
+  \Omegaxy = \frac{3(1-\mu)(x+\mu)\,y}{r_1^5}
+       + \frac{3\mu(x - 1 + \mu)\,y}{r_2^5}.
+\label{eq:omega-xy}
+\end{equation}
+
+These come from \texttt{PlanarCR3BP.jacobian\_state}, which is tested
+against central finite differences across six random seeds.
+
+Substituting the expansion into~\eqref{eq:cr3bp} and subtracting the
+nominal equation yields a linear time-varying (LTV) system for
+$\delta\xvec$:
+
+\begin{equation}
+  \boxed{
+  \begin{aligned}
+    \delta\ddot{x} &=  2\,\delta\dot{y}
+       + \Omegaxx(t)\,\delta x + \Omegaxy(t)\,\delta y + \delta u_x, \\
+    \delta\ddot{y} &= -2\,\delta\dot{x}
+       + \Omegaxy(t)\,\delta x + \Omegayy(t)\,\delta y + \delta u_y,
+  \end{aligned}
+  }
+  \label{eq:cr3bp-linearized}
+\end{equation}
+
+where the coefficients $\Omegaxx(t) \equiv \Omegaxx(\bar x(t),
+\bar y(t))$ etc.\ are \emph{known} functions of time once the
+nominal is fixed.
+
+\begin{remark}
+Equation~\eqref{eq:cr3bp-linearized} should look familiar: with the
+nominal frozen at $L_4$ and Earth--Moon $\mu$, it reduces exactly to
+the classical L4 libration linear analysis. With the nominal frozen
+at the Earth, it reduces to Clohessy--Wiltshire-like behaviour (up to
+a different reference frame). Both are physically meaningful
+sanity-check regimes for the transcription.
+\end{remark}
+
+
+% ==================================================================
+\section{Optimal control formulation}
+% ==================================================================
+
+\subsection{The problem}
+
+We want to steer the spacecraft from an initial \textbf{low Earth orbit
+(LEO)} state to a final \textbf{low lunar orbit (LLO)} state over a
+fixed time of flight $T$:
+
+\begin{equation}
+  \min_{\uvec(\cdot)} \quad
+    J \;=\; \tfrac12 \int_0^T \|\uvec(t)\|^2\, dt
+\end{equation}
+subject to the CR3BP dynamics~\eqref{eq:cr3bp-1st-order} and the
+boundary conditions
+
+\begin{equation}
+  \bvec{r}(0) = \bvec{r}_0,\quad
+  \bvec{v}(0) = \bvec{v}_0,\quad
+  \bvec{r}(T) = \bvec{r}_f,\quad
+  \bvec{v}(T) = \bvec{v}_f.
+\label{eq:bcs}
+\end{equation}
+
+The $\tfrac12 \|\uvec\|^2$ cost is the standard \textbf{energy-optimal}
+objective for low-thrust rendezvous. It is \emph{not} fuel-optimal
+($\int \|\uvec\|\,dt$), but it is quadratic in the control so it stays
+friendly to QUBO and least-squares pipelines. Fuel-optimal cost is an
+explicit future extension.
+
+\subsection{Hamiltonian and Pontryagin}
+
+Introduce the costate $\bvec{\lambda}(t) = (\lamr, \lamv)^\top$,
+partitioned so that $\lamr$ is conjugate to $\bvec{r}$ and $\lamv$
+is conjugate to $\bvec{v}$. The control Hamiltonian is
+
+\begin{equation}
+  \mathcal{H}(\xvec, \uvec, \bvec{\lambda})
+   \;=\;
+   \tfrac12 \|\uvec\|^2
+   + \lamr\TT \bvec{v}
+   + \lamv\TT \Big( \bvec{g}(\bvec{r}) + \bvec{C} \bvec{v} + \uvec \Big),
+\end{equation}
+
+where $\bvec{g} = (\Omegax, \Omegay)$ is the pseudo-potential
+gradient and
+
+\begin{equation}
+  \bvec{C} \;=\;
+  \begin{pmatrix}
+    0 & 2 \\ -2 & 0
+  \end{pmatrix}
+\end{equation}
+
+is the Coriolis block (constant). Pontryagin's Minimum Principle
+gives the optimality conditions:
+
+\begin{align}
+  \dot{\bvec{r}} &=\phantom{-} \partial \mathcal{H} / \partial \lamr
+              \;=\; \bvec{v}, \\
+  \dot{\bvec{v}} &=\phantom{-} \partial \mathcal{H} / \partial \lamv
+              \;=\; \bvec{g}(\bvec{r}) + \bvec{C} \bvec{v} + \uvec, \\
+  \dot{\lamr}    &=          - \partial \mathcal{H} / \partial \bvec{r}
+              \;=\; - \Big(\partial \bvec{g}/\partial \bvec{r}\Big)\TT \lamv, \\
+  \dot{\lamv}    &=          - \partial \mathcal{H} / \partial \bvec{v}
+              \;=\; - \lamr - \bvec{C}\TT \lamv,
+\end{align}
+and the optimality equation
+\begin{equation}
+  0 \;=\; \partial \mathcal{H}/\partial \uvec
+    \;=\; \uvec + \lamv
+  \qquad\Longrightarrow\qquad
+  \boxed{\,\uvec^\star \;=\; -\lamv.\,}
+\end{equation}
+
+\paragraph{Consequence.}
+The control is \emph{eliminated analytically}. The two-point BVP for
+the indirect method has unknowns $(\bvec{r}, \bvec{v}, \lamr, \lamv)$
+--- $8$ scalar functions in the planar case --- with $8$ boundary
+conditions (four from the BCs~\eqref{eq:bcs} on $\bvec{r}$, four on
+$\bvec{v}$). The costates are \emph{unconstrained} at the boundaries:
+they adjust automatically to whatever keeps the optimality conditions
+consistent.
+
+\subsection{Linearized costate equations}
+
+When the state dynamics are linearized about a nominal as
+in~\eqref{eq:cr3bp-linearized}, the costate dynamics linearize
+accordingly because the Hessian of $\Omega$ is what appears in the
+state Jacobian. Writing out all four components:
+
+\begin{align}
+  \dot\lambda_{r_x} &= -\big(\Omegaxx \lambda_{v_x}
+                           + \Omegaxy \lambda_{v_y}\big), \\
+  \dot\lambda_{r_y} &= -\big(\Omegaxy \lambda_{v_x}
+                           + \Omegayy \lambda_{v_y}\big), \\
+  \dot\lambda_{v_x} &= -\lambda_{r_x} + 2\,\lambda_{v_y}, \\
+  \dot\lambda_{v_y} &= -\lambda_{r_y} - 2\,\lambda_{v_x},
+\end{align}
+
+where all $\Omega$ Hessian coefficients are evaluated at the nominal
+trajectory (so they are \emph{known functions of time}). These are
+the equations the transcription will discretize.
+
+
+% ==================================================================
+\section{Indirect TFC+ELM transcription}
+\label{sec:transcription}
+% ==================================================================
+
+\subsection{Theory of Functional Connections in one picture}
+
+The \textbf{Theory of Functional Connections} (TFC), due to
+Mortari~\cite{Mortari2017}, gives a way to write down a general
+functional form that \emph{automatically satisfies any set of linear
+boundary conditions}. The basic idea:
+
+\begin{quote}
+\emph{Instead of enforcing boundary conditions as separate equations,
+build them into the basis.} The basis becomes a family of
+``constrained expressions'' indexed by free parameters $\xvec$,
+and every choice of $\xvec$ lands on a function that already meets
+the BCs by construction.
+\end{quote}
+
+For a second-order ODE on $[0, T]$ with four BCs on position and
+velocity,
+
+\begin{equation}
+  x(0) = x_0,\quad x(T) = x_f,\quad \dot x(0) = v_0,\quad \dot x(T) = v_f,
+\end{equation}
+
+the constrained expression takes the form
+
+\begin{equation}
+  x(t) \;=\; C(t) \;+\; F(t, \xvec),
+\end{equation}
+
+where $C(t)$ is a particular solution hitting the BCs and $F(t,
+\xvec)$ is the free part \emph{annihilated by all four BC
+projections}. TFC provides the following standard choice in terms
+of switching functions $\omega_1, \omega_2, \omega_3, \omega_4$:
+
+\begin{align}
+  C(t) &= \omega_1(t)\, x_0 + \omega_2(t)\, x_f
+        + \omega_3(t)\, v_0 + \omega_4(t)\, v_f, \\
+  F(t, \xvec) &= g(t, \xvec)
+        - \omega_1(t)\, g(0, \xvec) - \omega_2(t)\, g(T, \xvec)
+        - \omega_3(t)\, \dot g(0, \xvec) - \omega_4(t)\, \dot g(T, \xvec),
+\end{align}
+
+where $g(\cdot, \xvec)$ is \emph{any} twice-differentiable function
+of $t$ parameterised by unknowns $\xvec$. The four $\omega_i$ are
+cubic Hermite basis polynomials on $[0, T]$ with the following
+``Kronecker-like'' property:
+
+\begin{equation}
+  \begin{array}{c|cccc}
+     & \omega_1 & \omega_2 & \omega_3 & \omega_4 \\
+    \hline
+     \text{value at } 0           & 1 & 0 & 0 & 0 \\
+     \text{value at } T           & 0 & 1 & 0 & 0 \\
+     \text{derivative at } 0      & 0 & 0 & 1 & 0 \\
+     \text{derivative at } T      & 0 & 0 & 0 & 1
+  \end{array}
+\end{equation}
+
+so that $C(0) = x_0$, $C(T) = x_f$, $\dot C(0) = v_0$, $\dot C(T) =
+v_f$, and $F$ contributes $0$ to all four BC projections for any
+$\xvec$. It follows that the full expression satisfies all four BCs
+\emph{independently} of $\xvec$ --- the optimizer can search freely
+in the space of $\xvec$ without ever violating a BC.
+
+\paragraph{Explicit formulas.}
+On the normalized interval $z \in [-1, 1]$ with $dz = 2$, the
+implementation uses
+
+\begin{align}
+  \omega_1(z) &=  1 + 2\tau^3/8 - 3\tau^2/4, \\
+  \omega_2(z) &= -2\tau^3/8 + 3\tau^2/4, \\
+  \omega_3(z) &=  \tau + \tau^3/4 - \tau^2, \\
+  \omega_4(z) &=  \tau^3/4 - \tau^2/2,
+\end{align}
+
+with $\tau = z - z_0 = z + 1$. These are the same Hermite basis
+polynomials used in Gino's rendezvous code; a time-rescaling factor
+$c = (z_f - z_0)/(t_f - t_0) = 2/T$ converts derivatives with
+respect to $z$ back into derivatives with respect to physical time.
+
+\subsection{Extreme Learning Machine basis}
+
+The ``free'' function $g(t, \xvec)$ that lives inside $F$ can be
+\emph{any} twice-differentiable parameterization. TFC experiments
+typically use a \textbf{single-hidden-layer neural network with
+random, frozen input weights} --- an \textbf{Extreme Learning Machine}
+(ELM)~\cite{Huang2006}:
+
+\begin{equation}
+  g(z, \xvec) \;=\; \sum_{j=1}^{L} \xi_j \, \sigma\big( w_j z + b_j \big),
+\end{equation}
+
+where $\sigma$ is a smooth activation (e.g.\ $\tanh$, logistic, or
+Gaussian), the weights $w_j$ and biases $b_j$ are drawn \emph{once}
+from a fixed distribution (e.g.\ uniform on $[-3, 3]$) and \emph{never
+updated}, and the output weights $\xi_j$ are the only free parameters.
+
+An ELM is a universal approximator: for any sufficiently smooth
+target function $g^\star$ and any error tolerance $\varepsilon$, there
+exists an ELM with enough neurons $L$ that gets within $\varepsilon$
+of $g^\star$ by an appropriate choice of $\xvec$. Crucially, because
+the output layer is linear in $\xvec$, the LSQ problem ``fit
+$g(\cdot, \xvec)$ to residual data'' is linear in $\xvec$ --- exactly
+what we need for the downstream QUBO engine.
+
+\subsubsection*{Why not spline or Chebyshev?}
+
+Two reasons ELM is preferred here:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Random-feature universality.} There is no rigid grid
+    and no dependence on collocation structure, you simply draw
+    more neurons to get more capacity.
+  \item \textbf{Well-conditioning of the transcription matrix.}
+    Gaussian and tanh ELM features are effectively random Fourier-like
+    features: the linear system assembled from them typically has a
+    smoothly decaying singular spectrum that plays well with the
+    truncated-SVD step of the QUBO pipeline.
+\end{enumerate}
+
+\subsubsection*{Derivatives of the ELM basis}
+
+At each training point $z_i$ and each neuron $j$, we need three
+quantities: $\sigma$, $\sigma'$, $\sigma''$. For $\sigma = \tanh$:
+
+\begin{align}
+  \sigma(w z + b) &= \tanh(w z + b), \\
+  \sigma'(w z + b) &= w\big(1 - \tanh^2(w z + b)\big), \\
+  \sigma''(w z + b) &= -2 w^2 \tanh(w z + b)\big(1 - \tanh^2(w z + b)\big).
+\end{align}
+
+Stacking these over $n$ training points and $L$ neurons gives three
+matrices $\Hmat, \Hmat', \Hmat'' \in \R^{n \times L}$.
+
+\subsection{Constrained expression assembly}
+
+With the switching functions and the ELM basis in hand, build the
+following per-coordinate constrained matrices on the $n$ training
+points:
+
+\begin{align}
+  \Fmat     &= \Hmat
+              - \bvec{\omega}_1 \Hmat(z_0)^{\phantom\top}
+              - \bvec{\omega}_2 \Hmat(z_f)
+              - \bvec{\omega}_3 \Hmat'(z_0)
+              - \bvec{\omega}_4 \Hmat'(z_f), \\
+  \Fmat'    &= c\,\Big[\,\Hmat'
+              - \bvec{\omega}_1' \Hmat(z_0)
+              - \bvec{\omega}_2' \Hmat(z_f)
+              - \bvec{\omega}_3' \Hmat'(z_0)
+              - \bvec{\omega}_4' \Hmat'(z_f)\Big], \\
+  \Fmat''   &= c^2\,\Big[\,\Hmat''
+              - \bvec{\omega}_1'' \Hmat(z_0) - \dots\Big].
+\end{align}
+
+The factor $c = 2/T$ is the chain-rule conversion between $z$-time
+and physical time, and appears once per derivative order.
+
+Note the crucial property: $\Fmat$ is zero in the first and last
+rows by construction (the switching-function subtraction exactly
+cancels the value at the endpoints), and likewise $\Fmat'$ is zero
+at the endpoints. This encodes the BC annihilation.
+
+The BC-particular part is assembled similarly:
+
+\begin{equation}
+  \bvec{C}(z) \;=\; \bvec{\omega}_1 r_0 + \bvec{\omega}_2 r_f
+      + \tfrac{1}{c}\big[\bvec{\omega}_3 v_0 + \bvec{\omega}_4 v_f\big],
+\end{equation}
+
+with the $1/c$ for velocity BCs because velocities in physical time
+are the $z$-derivative times $c$. Evaluating $\bvec{C}$ and its
+derivatives at each training point gives three vectors $\bvec{C},
+\bvec{C}', \bvec{C}'' \in \R^{n}$.
+
+\subsection{The linear residual system}
+\label{sec:linear-system}
+
+Gather all the unknown ELM weights into a single tall vector:
+
+\begin{equation}
+  \bm{\xi} \;=\; \big(
+    \bm{\xi}_{x},\;
+    \bm{\xi}_{y},\;
+    \bm{\xi}_{\lambda_{r_x}},\;
+    \bm{\xi}_{\lambda_{r_y}},\;
+    \bm{\xi}_{\lambda_{v_x}},\;
+    \bm{\xi}_{\lambda_{v_y}}
+  \big) \in \R^{6L},
+\end{equation}
+
+so there are six blocks of $L$ weights --- two for the position
+states (which use $\Fmat$-based constrained expressions with BCs)
+and four for the costates (which use $\Hmat$-based
+expressions \emph{without} BC enforcement, since the costates have
+no fixed boundary values).
+
+At each of the $n$ training points, the six ODEs yield $6n$ linear
+residual equations. Written as a block matrix:
+
+\begin{equation}
+  \underbrace{\begin{pmatrix}
+    \Fmat'' - \Omegaxx \Fmat & -\Omegaxy \Fmat  & \bm 0   & \bm 0 & \Hmat  & \bm 0  \\
+    -\Omegaxy \Fmat & \Fmat'' - \Omegayy \Fmat  & \bm 0   & \bm 0 & \bm 0  & \Hmat  \\
+    \bm 0 & \bm 0 & \Hmat' & \bm 0 & \Omegaxx \Hmat & \Omegaxy \Hmat \\
+    \bm 0 & \bm 0 & \bm 0 & \Hmat' & \Omegaxy \Hmat & \Omegayy \Hmat \\
+    \bm 0 & \bm 0 & \Hmat & \bm 0 & \Hmat' & -2\,\Hmat \\
+    \bm 0 & \bm 0 & \bm 0 & \Hmat & 2\,\Hmat & \Hmat'
+  \end{pmatrix}}_{\Amat \in\, \R^{6n\times 6L}}
+  \bm\xi
+  \;=\;
+  \underbrace{\begin{pmatrix}
+    -\bvec{C}''_x + 2\,\bvec{C}'_y + \tilde g_x \\
+    -\bvec{C}''_y - 2\,\bvec{C}'_x + \tilde g_y \\
+    \bm 0 \\ \bm 0 \\ \bm 0 \\ \bm 0
+  \end{pmatrix}}_{\Bmat\,\in\,\R^{6n}},
+\label{eq:linear-system}
+\end{equation}
+
+where the nominal-forcing terms that enter the first two blocks of
+$\Bmat$ are
+
+\begin{align}
+  \tilde g_x(t) &= \Omegax(\bar x, \bar y)
+                 - \Omegaxx(\bar x, \bar y)\,\bar x
+                 - \Omegaxy(\bar x, \bar y)\,\bar y, \\
+  \tilde g_y(t) &= \Omegay(\bar x, \bar y)
+                 - \Omegaxy(\bar x, \bar y)\,\bar x
+                 - \Omegayy(\bar x, \bar y)\,\bar y.
+\end{align}
+
+These are the ``constants of linearization'' --- what you have to
+\emph{add} to the linearized dynamics to reproduce the full nonlinear
+dynamics at the nominal state.
+
+\begin{remark}
+The rows are organised exactly as in Gino's rendezvous MATLAB code
+\texttt{Rendezvous\_Gino.m}: two position-dynamics blocks, two
+$\lamr$-dynamics blocks, two $\lamv$-dynamics blocks. The only
+differences are (i) a planar problem rather than 3D, so the
+block count drops from $9$ to $6$, and (ii) the HCW constant
+matrices $M_{\mathrm{cw}}, N_{\mathrm{cw}}$ are replaced by the
+\emph{time-varying} CR3BP Hessian entries evaluated on the nominal.
+\end{remark}
+
+\subsection{Number of unknowns and size of the linear system}
+
+For $L$ ELM neurons per coordinate, $n$ training points, and the
+planar problem:
+
+\begin{center}
+\begin{tabular}{lr}
+  \toprule
+  unknowns $\bm\xi$ & $6L$ \\
+  equations         & $6n$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+We pick $n > L$ so the system is strictly overdetermined and
+well-posed for least-squares solution. Typical choices for a first
+Earth--Moon benchmark: $n = 40$, $L = 20$, giving a
+$240\times 120$ linear system. The downstream Tikhonov+SVD step will
+then reduce this to a few dozen ``effective'' unknowns before binary
+encoding.
+
+
+% ==================================================================
+\section{Linear LSQ $\to$ QUBO pipeline}
+% ==================================================================
+
+This is the pipeline Gino introduced in \texttt{Rendezvous\_GIno.m}
+and which the \texttt{qalunar.qubo.linear\_lsq} module ports to
+Python. Given the linear system $\Amat \bm\xi = \Bmat$ from
+Section~\ref{sec:linear-system}, construct a quadratic unconstrained
+binary optimization (QUBO) whose ground state is the
+Tikhonov-regularized least-squares solution under a per-variable
+adaptive binary encoding.
+
+\subsection{Step 1 --- Tikhonov regularization}
+
+Minimize
+
+\begin{equation}
+  J(\bm\xi) \;=\; \|\Amat\bm\xi - \Bmat\|^2 \;+\; \lambda\,\|\bm\xi\|^2,
+\label{eq:tikhonov}
+\end{equation}
+
+which is the standard regularized least-squares objective. This is
+equivalent to the augmented system
+
+\begin{equation}
+  \Amat_{\mathrm{aug}} \;=\; \begin{pmatrix} \Amat \\ \sqrt\lambda \, \bvec{I}_{6L} \end{pmatrix},
+  \qquad
+  \Bmat_{\mathrm{aug}} \;=\; \begin{pmatrix} \Bmat \\ \bm 0 \end{pmatrix},
+\end{equation}
+
+and
+\begin{equation}
+  \min_{\bm\xi} \|\Amat_{\mathrm{aug}}\bm\xi - \Bmat_{\mathrm{aug}}\|^2.
+\end{equation}
+
+The regularization strength is chosen relative to the spectrum of
+$\Amat$:
+
+\begin{equation}
+  \lambda \;=\; \varepsilon_{\mathrm{tik}} \cdot \sigma_{\max}(\Amat)^2,
+\end{equation}
+
+with $\varepsilon_{\mathrm{tik}} = 10^{-6}$ in the default config. The
+scale $\sigma_{\max}^2$ makes the regularization self-calibrating to
+the problem size; $\varepsilon_{\mathrm{tik}}$ controls how much the
+regularizer bites into the solution.
+
+\paragraph{Why bother with Tikhonov?}
+Without it, rank-deficient or nearly-singular $\Amat$ (which is the
+rule rather than the exception when $n \to L$ or when the ELM
+spectrum decays fast) produces a solution with unboundedly large
+entries $\bm\xi$. Tikhonov forces the minimum-norm-\emph{ish}
+solution and gives a \emph{unique} $\bm\xi_{\mathrm{tik}}$ that we
+can use as the encoding center.
+
+\subsection{Step 2 --- Truncated SVD}
+
+Compute the thin SVD
+
+\begin{equation}
+  \Amat_{\mathrm{aug}} \;=\; \bvec{U}\,\mathrm{diag}(\bm s)\,\bvec{V}^{\top},
+\end{equation}
+
+and keep only the singular values above a relative threshold:
+
+\begin{equation}
+  r \;=\; \#\{ i : s_i > \tau_{\mathrm{svd}}\, s_1 \},
+  \qquad \tau_{\mathrm{svd}} = 10^{-3}\ \text{(default)}.
+\end{equation}
+
+The right-basis columns $\Vr \in \R^{6L \times r}$ define a
+\emph{reduced} parameterization
+
+\begin{equation}
+  \bm\xi \;=\; \Vr\,\bm\alpha, \qquad \bm\alpha \in \R^{r},
+\end{equation}
+
+with the Tikhonov solution in reduced coordinates
+
+\begin{equation}
+  \bm\alpha_{\mathrm{tik}} \;=\; \mathrm{diag}(s_r)^{-1}
+     \,\bvec{U}_r^{\top} \Bmat_{\mathrm{aug}},
+\end{equation}
+
+where $\bvec{U}_r$ and $s_r$ are the first $r$ columns and entries of
+$\bvec{U}$ and $\bm s$. This typically cuts the number of variables
+from hundreds to tens: the binary encoding only has to cover the
+$r$-dimensional ``active'' subspace instead of the full $6L$ raw
+weights.
+
+\subsection{Step 3 --- Per-variable adaptive encoding}
+
+Each reduced coordinate $\alpha_i$ is quantized over a personalized
+interval $[\alpha_{\mathrm{tik},i} - R_i,\ \alpha_{\mathrm{tik},i} +
+R_i]$ with $p$ bits. The half-range $R_i$ blends two contributions:
+
+\begin{equation}
+  R_i \;=\; \text{margin} \cdot
+    \left(\,
+      |\alpha_{\mathrm{tik},i}|
+      \;+\;
+      \frac{\|\bvec{r}_{\mathrm{aug}}\|}{s_i}
+    \right),
+\qquad
+\bvec{r}_{\mathrm{aug}} = \Bmat_{\mathrm{aug}} - \Amat_{\mathrm{aug}}\bm\xi_{\mathrm{tik}},
+\end{equation}
+
+and is then clipped below by $\texttt{min\_spread}$ to avoid
+degenerate zero-width intervals.
+
+\paragraph{Why blend magnitude and sensitivity?}
+The magnitude term $|\alpha_{\mathrm{tik},i}|$ reserves enough room
+for the Tikhonov estimate itself (so the encoding isn't biased toward
+zero on large components). The sensitivity term $\|r\| / s_i$
+reserves more room for small-$s_i$ directions, which are the ones
+that can move a lot without changing the LSQ residual much; it is
+exactly the linear-sensitivity bound $|\delta \alpha_i| \leq \|\delta
+b\| / s_i$ for a perturbed right-hand side.
+
+The encoding is then
+
+\begin{equation}
+  \alpha_i(\bvec{q}) \;=\; \alpha_{\mathrm{offset},i}
+     \;+\; \text{step}_i \sum_{k=0}^{p-1} 2^k\, q_{ip + k},
+\qquad
+\text{step}_i = \frac{2 R_i}{2^p - 1},
+\quad
+\alpha_{\mathrm{offset},i} = \alpha_{\mathrm{tik},i} - R_i.
+\end{equation}
+
+In matrix form, $\bm\alpha = \bm\alpha_{\mathrm{offset}} + \Ddec
+\bvec{q}$, with $\Ddec \in \R^{r \times rp}$ block-diagonal with
+blocks $\text{step}_i \cdot (1, 2, 4, \dots, 2^{p-1})$.
+
+\subsection{Step 4 --- QUBO assembly}
+
+Substituting the encoding into the Tikhonov objective:
+
+\begin{align}
+  J(\bvec{q})
+   &\;=\; \|\Amat_{\mathrm{aug}} \Vr\,(\bm\alpha_{\mathrm{offset}} + \Ddec \bvec{q})
+           - \Bmat_{\mathrm{aug}}\|^2 \\
+   &\;=\; \|\Phi\,\bvec{q} - \tilde{\Bmat}\|^2,
+\end{align}
+
+where
+
+\begin{align}
+  \Amat_{\mathrm{red}} &= \Amat_{\mathrm{aug}}\, \Vr, \\
+  \Phi                 &= \Amat_{\mathrm{red}}\,\Ddec, \\
+  \tilde{\Bmat}        &= \Bmat_{\mathrm{aug}} - \Amat_{\mathrm{red}}\,\bm\alpha_{\mathrm{offset}}.
+\end{align}
+
+Expanding the square gives the QUBO
+
+\begin{equation}
+\boxed{
+  E(\bvec{q}) \;=\; \bvec{q}^{\top} \Qmat \bvec{q}
+              \;+\; \bvec\ell^{\top}\bvec{q}
+              \;+\; c,
+}
+\end{equation}
+
+with
+
+\begin{equation}
+  \Qmat = \Phi^{\top}\Phi,\qquad
+  \bvec\ell = -2\,\Phi^{\top}\tilde{\Bmat},\qquad
+  c = \|\tilde{\Bmat}\|^2.
+\end{equation}
+
+\paragraph{The core identity.}
+By construction,
+\begin{equation}
+  E(\bvec{q}) \;=\; \|\Amat_{\mathrm{aug}} \bm\xi(\bvec{q}) - \Bmat_{\mathrm{aug}}\|^2
+  \quad\text{for every }\bvec{q}\in\{0,1\}^{rp}.
+\end{equation}
+That is, the QUBO ground state \emph{is} the best binary-encodable
+approximation to the Tikhonov-regularized LSQ solution --- no
+approximation error beyond quantization. The unit tests in
+\texttt{tests/test\_qubo\_linear\_lsq.py} verify this identity on
+random bit vectors.
+
+\subsection{Decoding and warm starts}
+
+To go from a bitstring $\bvec{q}$ back to the original unknowns:
+
+\begin{equation}
+  \bvec{q} \;\;\longrightarrow\;\;
+  \bm\alpha = \bm\alpha_{\mathrm{offset}} + \Ddec\,\bvec{q}
+  \;\;\longrightarrow\;\;
+  \bm\xi = \Vr\,\bm\alpha.
+\end{equation}
+
+The \textbf{warm start} is the quantization of $\bm\alpha_{\mathrm{tik}}$
+to $p$ bits per coordinate. Because the encoding is centered at
+$\bm\alpha_{\mathrm{tik}}$, the warm start is within half a quantization
+step per coordinate of the Tikhonov solution, and the corresponding
+bitstring is a strong initial seed for D-Wave hybrid solvers or
+simulated annealing.
+
+\subsection{Default hyperparameters}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Parameter & Symbol & Default \\
+  \midrule
+  Bits per reduced variable        & $p$                     & $8$     \\
+  Tikhonov (relative to $\sigma_{\max}^2$) & $\varepsilon_{\mathrm{tik}}$ & $10^{-6}$ \\
+  SVD truncation threshold         & $\tau_{\mathrm{svd}}$   & $10^{-3}$ \\
+  Encoding margin                  & --                      & $3.0$   \\
+  Minimum half-range floor         & --                      & $10^{-6}$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+These match Gino's MATLAB defaults and are the starting point for
+the sensitivity sweep once the Earth--Moon benchmark runs.
+
+% ==================================================================
+\section{Sequential linearization outer loop}\label{sec:sequential-linearization}
+% ==================================================================
+
+Because the CR3BP is nonlinear, one call to the QUBO inner solver
+does not give the optimal trajectory, it gives the optimal
+\emph{linear perturbation} around whatever nominal was used to build
+$\Amat, \Bmat$. The sequential outer loop iterates:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item Start with an initial nominal $\bar{\xvec}^{(0)}(t)$
+    (e.g.\ the Hermite cubic interpolant of the boundary conditions,
+    or a classical-NLP reference solution).
+  \item At iteration $k$:
+    \begin{enumerate}[leftmargin=1.5em, itemsep=1pt]
+      \item Evaluate $\Omegaxx, \Omegaxy, \Omegayy$ and the forcing
+        terms $\tilde g_x, \tilde g_y$ on the nominal.
+      \item Assemble the linear system $\Amat^{(k)} \bm\xi = \Bmat^{(k)}$.
+      \item Build and solve the QUBO; decode to $\bm\xi^{(k)}$ and
+        reconstruct the new trajectory $\xvec^{(k+1)}(t)$.
+      \item Update the nominal: $\bar{\xvec}^{(k+1)} = \xvec^{(k+1)}$.
+    \end{enumerate}
+  \item Repeat until $\|\bar{\xvec}^{(k+1)} - \bar{\xvec}^{(k)}\|$
+    drops below a tolerance, or the cost $J$ stops decreasing.
+\end{enumerate}
+
+This is essentially a Gauss--Newton / sequential linearization
+approach, very similar to what sequential convex programming (SCP)
+does in the classical trajectory-optimization literature. The
+difference is that the inner step is not a convex QP solve but a
+QUBO ground-state search.
+
+\paragraph{Pass-1 vs.\ Pass-2 loop.}
+The implementation in
+\texttt{IndirectTfcElmTranscription.solve\_sequential} supports two
+modes, selected by the flag \texttt{OuterLoopConfig.line\_search}:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{Pass 1} (\texttt{line\_search=False}): fixed damping,
+    $\bar{\xvec}^{(k+1)} = \bar{\xvec}^{(k)} + \alpha\,(\xvec^{(k+1)} - \bar{\xvec}^{(k)})$
+    with a constant $\alpha \in (0, 1]$. Reproduces the behaviour of
+    the first-pass rendezvous loop. Tolerant of mild nonlinearity;
+    oscillates or diverges on stronger CR3BP transfers.
+  \item \textbf{Pass 2} (\texttt{line\_search=True}, the default):
+    adaptive Armijo backtracking with merit function
+    $m(\bar{\xvec}) = \|\xvec(\bm\xi(\bar{\xvec})) - \bar{\xvec}\|_\infty$,
+    i.e.\ the \emph{fixed-point residual} of the Picard map
+    $\bar{\xvec} \mapsto \xvec(\bm\xi(\bar{\xvec}))$, which is the
+    right Newton merit for the rootfinding problem
+    $F(\bar{\xvec}) := \xvec(\bm\xi(\bar{\xvec})) - \bar{\xvec} = \bm 0$.
+\end{itemize}
+
+\subsection{Pass-2 Armijo line search}
+\label{sec:armijo}
+
+The full step at iteration $k$ is
+\[
+  \Delta \bar{\xvec}^{(k)} \;=\; \xvec^{(k+1)} - \bar{\xvec}^{(k)}.
+\]
+Starting from $\alpha = \texttt{damping}$ (default $1.0$ --- a full
+Newton-like step), we trial
+\[
+  \bar{\xvec}^{(k+1)}_{\mathrm{trial}} \;=\; \bar{\xvec}^{(k)}
+     \;+\; \alpha \, \Delta \bar{\xvec}^{(k)}
+\]
+and accept it when
+\begin{equation}
+  m\big(\bar{\xvec}^{(k+1)}_{\mathrm{trial}}\big)
+  \;\leq\;
+  (1 - c_1\,\alpha)\, m\big(\bar{\xvec}^{(k)}\big),
+\label{eq:armijo}
+\end{equation}
+with $c_1 = \texttt{armijo\_c} = 10^{-4}$. Otherwise $\alpha$ is
+multiplied by \texttt{backtrack\_factor} (default $1/2$) and the
+trial is repeated, down to a floor $\alpha \geq \texttt{min\_damping}$
+(default $2^{-10}$).
+
+\paragraph{Why the fixed-point residual?}
+The nonlinear TPBVP residual is \emph{not} a valid Armijo merit
+here: the linearization changes at every trial nominal, so
+$\|R_{\mathrm{NL}}(\bm\xi^{\mathrm{trial}})\|$ need not be monotone
+with $\alpha$. The fixed-point residual
+$\|F(\bar{\xvec})\|_\infty$, on the other hand, is exactly the
+quantity the outer loop is trying to zero; it is the analogue of
+$\|\nabla\!f\|$ in gradient descent, and its Armijo-like decrease
+gives the outer loop a globalization guarantee --- once Pass~2 has
+accepted a step, the fixed-point residual cannot grow above its
+initial value.
+
+\paragraph{Concrete effect.}
+On the short, gentle fixture used in
+\texttt{tests/test\_indirect\_tfc\_elm.py}, Pass~2 accepts
+$\alpha = 1$ at every iteration and converges in about $13$ outer
+iterations, versus $\sim\! 32$ for fixed damping $\alpha = 0.5$. On
+the long-transfer fixture, fixed-damping $\alpha = 1$ oscillates
+wildly --- peak step norm $\approx 2$ against an initial value
+$\approx 0.7$ --- while the Armijo-bounded version keeps the step
+norm under its initial value for all $40$ iterations, as the test
+\texttt{TestLineSearch::test\_line\_search\_bounds\_step\_norm\_on\_%
+aggressive\_problem} verifies. That said, bounding the step norm is
+not the same as converging: on the long transfer, even the
+line-searched loop stalls outside the basin of attraction if seeded
+only by the BC-only Hermite interpolant, which motivates the
+classical reference of the next section.
+
+\newpage
+% ==================================================================
+\section{Classical reference via direct collocation}
+\label{sec:reference}
+% ==================================================================
+
+The outer loop of Section~6 is a contraction \emph{only inside a
+local basin of attraction}, and the basin can be genuinely small on
+long or curved transfers in the Earth--Moon CR3BP. The indirect
+transcription needs a good initial nominal, and the BC-only Hermite
+interpolant \texttt{initial\_nominal()} is not good enough once the
+trajectory makes any real excursion away from the straight line
+joining the endpoints.
+
+We therefore ship a \textbf{classical direct-collocation reference
+solver} in \texttt{qalunar.reference.direct\_collocation}. It plays
+two distinct roles in the project:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Warm start.} The solution produced by the reference
+    solver is resampled onto the TFC+ELM training grid and passed as
+    \texttt{initial\_nominal} to
+    \texttt{solve\_sequential}.
+  \item \textbf{Classical baseline.} The same solver provides a CPU
+    reference objective $J^{\star}_{\mathrm{NLP}}$ that the QUBO
+    samples will be measured against in the benchmark sweep
+    (project Task~9).
+\end{enumerate}
+
+\subsection{Hermite--Simpson direct collocation}
+
+Split $[0, T]$ into $N$ uniform intervals of width $h = T/N$ and
+introduce node values at $N+1$ points,
+\[
+  \xvec_k \;=\; (x_k, y_k, v_{x,k}, v_{y,k}),
+  \qquad
+  \uvec_k \;=\; (u_{x,k}, u_{y,k}),
+  \qquad k = 0, \dots, N.
+\]
+The decision vector is the concatenation
+\[
+  \bvec{z} \;=\; (\xvec_0, \dots, \xvec_N,\;\uvec_0, \dots, \uvec_N)
+     \;\in\; \R^{6(N+1)}.
+\]
+
+\paragraph{Hermite--Simpson defect.}
+On each sub-interval $[t_k, t_{k+1}]$, the cubic Hermite interpolant
+through $(\xvec_k, \fvec_k)$ and $(\xvec_{k+1}, \fvec_{k+1})$ must
+agree with the dynamics at the midpoint. With
+$\fvec_k = \fvec(\xvec_k, \uvec_k)$,
+\begin{align}
+  \xvec_{k+1/2} &= \tfrac12(\xvec_k + \xvec_{k+1})
+     \;+\; \tfrac{h}{8}\,(\fvec_k - \fvec_{k+1}), \\
+  \uvec_{k+1/2} &= \tfrac12(\uvec_k + \uvec_{k+1}), \\
+  \fvec_{k+1/2} &= \fvec(\xvec_{k+1/2}, \uvec_{k+1/2}).
+\end{align}
+The Hermite--Simpson defect constraint is
+\begin{equation}
+  \boxed{\;
+  \bvec{d}_k \;=\; \xvec_{k+1} - \xvec_k
+     \;-\; \frac{h}{6}\big(\fvec_k + 4\,\fvec_{k+1/2} + \fvec_{k+1}\big)
+     \;=\; \bm 0,
+  \;}
+  \qquad k = 0, \dots, N - 1.
+\label{eq:hs-defect}
+\end{equation}
+This is a third-order collocation scheme, and it is a standard
+choice from Kelly~\cite{Kelly2017} and Betts~\cite{Betts2010}.
+
+\paragraph{Objective.}
+The energy cost is discretized with the composite trapezoidal rule,
+\begin{equation}
+  \tilde J(\bvec z) \;=\; \frac{h}{2}\sum_{k=0}^{N} w_k\,\|\uvec_k\|^2,
+  \qquad w_0 = w_N = \tfrac12,
+  \qquad w_k = 1\ \text{otherwise}.
+\end{equation}
+$\tilde J$ is a pure quadratic in the control block (Hessian constant
+and sparse), and its gradient
+\[
+  \partial \tilde J/\partial \uvec_k \;=\; h\,w_k\,\uvec_k
+\]
+is handed analytically to SLSQP; only the defect Jacobian is
+finite-differenced.
+
+\paragraph{Boundary conditions and bounds.}
+The eight equalities
+$\xvec_0 = (\bvec r_0, \bvec v_0)$ and
+$\xvec_N = (\bvec r_f, \bvec v_f)$ are appended to the constraint
+list. An optional symmetric box
+$|u_{x,k}|, |u_{y,k}| \leq u_{\max}$ can be passed via
+\texttt{DirectCollocationConfig.control\_bound}; states are left
+unbounded.
+
+The full NLP is
+\begin{equation}
+  \min_{\bvec z}\; \tilde J(\bvec z)
+  \quad \text{s.t.}\quad
+  \bvec d_k(\bvec z) = \bm 0\ \forall k,\ \
+  \xvec_0 = \bvec s_0,\ \
+  \xvec_N = \bvec s_f,\ \
+  \uvec_k \in [-u_{\max}, u_{\max}]^2,
+\end{equation}
+and is handed to \texttt{scipy.optimize.minimize} with
+\texttt{method="SLSQP"}. With $N = 40$ the problem has a few hundred
+variables and constraints and solves in well under a second.
+
+\subsection{Resampling onto the TFC+ELM grid}
+
+The direct-NLP result is returned as
+\texttt{DirectCollocationResult}, which exposes a helper
+\begin{center}
+\texttt{sample\_position(t\_query) -> (x\_bar, y\_bar)}
+\end{center}
+that linearly interpolates the node positions onto an arbitrary time
+grid. Warm-starting the indirect solver is then a three-liner:
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+ref = solve_energy_optimal_cr3bp(dynamics, r0, v0, rf, vf, T)
+x_bar, y_bar = ref.sample_position(transcription.t)
+sol = transcription.solve_sequential(
+    OuterLoopConfig(), initial_nominal=(x_bar, y_bar),
+)
+\end{lstlisting}
+Linear interpolation is enough because the outer loop uses the
+nominal only to evaluate $\Omegaxx, \Omegaxy, \Omegayy$ and
+$\tilde g_x, \tilde g_y$ pointwise; those are smooth functions of
+$(x, y)$ and insensitive to sub-node interpolation error.
+
+\subsection{Example trajectories: a two-phase Earth--Moon mission}
+\label{sec:example-trajectories}
+
+A physically realistic LEO-to-lunar low-thrust transfer is a
+multi-revolution spiral with hundreds of orbits around Earth over
+months to years of flight, well beyond what a single polynomial (or
+ELM) expansion can represent. Rather than ask the CR3BP
+transcription to do work it cannot do, we split the mission in two:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{Phase 1} --- analytical Edelbaum spiral from a low
+    circular Earth orbit out to a high circular Earth orbit, ignoring
+    lunar gravity. In this regime the dynamics are pure two-body
+    Keplerian around Earth and the problem is closed-form: tangential
+    thrust is already Edelbaum-optimal for a coplanar circular-to-
+    circular transfer, so there is nothing to optimize. We read off
+    $\Delta v$, time-of-flight and revolution count from the
+    classical formulas and move on.
+  \item \textbf{Phase 2} --- CR3BP energy-optimal transfer from the
+    Phase-1 handoff state to a rest rendezvous west of the Moon,
+    solved by the Hermite--Simpson direct NLP described above (and,
+    later, by the TFC+ELM indirect transcription of
+    Section~\ref{sec:transcription}). This is the three-body leg
+    that the whole QUBO stack targets.
+\end{itemize}
+
+Phase 1 is implemented in \texttt{qalunar.reference.edelbaum} as a
+ten-line closed-form function
+\texttt{edelbaum\_spiral}$(r_1, r_2, a_t)$ that returns an
+\texttt{EdelbaumSpiral} dataclass. In CR3BP nondimensional units,
+with $GM_{\oplus} = 1 - \mu$, the inertial circular speed is
+$v_i = \sqrt{(1-\mu)/r_i}$, so the total $\Delta v$ is just
+$|v_1 - v_2|$, the time of flight is $|v_1 - v_2| / a_t$ (constant
+tangential thrust integrates trivially), and the revolution count
+comes from integrating the orbital angular rate $v/r = v^3/GM$
+against $dt$:
+\begin{equation}
+  N_{\mathrm{rev}}
+  \;=\;
+  \frac{|v_1^4 - v_2^4|}{\,8\pi\,(1-\mu)\,a_t\,}.
+\end{equation}
+The \texttt{handoff\_state\_synodic()} method then places the
+spacecraft on the $+x$ direction at the moment its Earth-relative
+position crosses the positive $x$-axis, so its synodic position is
+$(-\mu + r_2, 0)$ with inertial velocity $(0, v_2)$ prograde, mapped
+to synodic velocity by subtracting
+$\bm\omega \times \bvec r = (-y, x)$.
+
+\paragraph{The reference mission.}
+The demo hero mission is a spiral from LEO ($r_1 = 0.018$ nondim,
+$\sim\!6\,900$ km) to a high circular Earth orbit at $r_2 = 0.5$ nondim
+($\sim\!192\,000$ km, half the Earth--Moon distance), at a plausible
+solar-electric thrust acceleration of $0.1\,\mathrm{mm/s^2}$. Phase 1
+yields (all numbers from \texttt{EdelbaumSpiral.si\_report()}):
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item $\Delta v_{\mathrm{P1}} \approx 6\,142$ m/s,
+  \item $T_{\mathrm{P1}} \approx 709$ days $\approx 1.94$ yr,
+  \item $N_{\mathrm{rev}} \approx 3\,292$ revolutions around Earth.
+\end{itemize}
+The handoff state is
+$\bvec r_0 = (-\mu + 0.5, 0) \approx (0.488, 0)$ with synodic velocity
+$\bvec v_0 = (0,\, v_2 - (-\mu + r_2)) \approx (0, 0.918)$ --- a
+prograde tangential crossing of the $+x$ axis on the Phase-1 exit
+orbit. Phase 2 then runs the direct NLP from this state to a rest
+rendezvous at $\bvec r_f = (1-\mu-0.1, 0)$,
+$\bvec v_f = \bvec 0$, with flight time $T = 3.0$ nondim
+($\approx 13$ days in physical units). SLSQP drives the
+Hermite--Simpson defects to $\approx 3 \cdot 10^{-10}$ in $53$
+iterations with objective
+$J = \tfrac12 \int_0^T \|\uvec\|^2\, dt \approx 0.64$ and peak
+acceleration $\|\uvec\|_{\max} \approx 1.69$ nondim. The resulting
+arc is a single prograde sweep from the Phase-1 exit orbit to the
+Moon realm, shown in Figure~\ref{fig:reference-gentle}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{../scripts/reference_gentle.png}
+  \caption{Two-phase Earth--Moon low-thrust mission. Phase 1 (dashed
+    gray) is an analytical Edelbaum spiral from LEO out to a
+    $r = 0.5$ nondim circular Earth orbit, summarized in the caption
+    box; the spiral itself is hundreds of revolutions and is not
+    drawn explicitly. Phase 2 (orange) is the direct-NLP
+    energy-optimal CR3BP transfer from the Phase-1 handoff state
+    $(0.488, 0)$ with synodic velocity $(0, 0.918)$ to a rest
+    rendezvous at $(1-\mu-0.1, 0)$, flight time $T = 3.0$ nondim.
+    Left: position in the synodic frame, with Earth and Moon
+    markers. Right: Phase-2 thrust-acceleration magnitude, showing a
+    smooth push-brake profile with peak $\approx 1.69$ nondim and
+    objective $J \approx 0.64$. The Phase-1 summary box reports
+    $\Delta v = 6\,142$ m/s, $T = 709$ days, $N_{\mathrm{rev}} =
+    3\,292$ at $0.1$ mm/s$^2$.}
+  \label{fig:reference-gentle}
+\end{figure}
+
+A second, deliberately synthetic benchmark (the same BCs used by
+the \texttt{transcription} test fixture: $\bvec r_0 = (-0.3, 0)$,
+$\bvec v_0 = (0, 0.6)$, $\bvec r_f = (0.4, 0.2)$,
+$\bvec v_f = (-0.1, 0)$, $T = 2.5$) is what exhibits the warm-start
+advantage. These BCs were chosen to keep the trajectory \emph{away}
+from both primaries so that the Hessian entries $\Omegaxx, \Omegaxy,
+\Omegayy$ (which scale as $\sim\! 1/r^3$ near each primary) stay
+bounded and unit-test conditioning is predictable --- they are a
+numerical stress test for the indirect iteration, not a mission
+geometry. On the two-phase Earth--Moon mission of
+Figure~\ref{fig:reference-gentle}, direct NLP and the indirect
+TPBVP sit in nearby basins and cold-start already contracts almost
+as well as warm-start, so the warm-start \emph{advantage} is best
+displayed on the synthetic benchmark, where cold-start is
+catastrophically stuck.
+The synthetic-benchmark comparison overlays, in the synodic frame:
+
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item the direct-NLP reference (orange),
+  \item the cold-started indirect iteration --- BC-only Hermite seed,
+    no warm start --- after $40$ outer iterations (red dashed),
+  \item the indirect iteration warm-started from
+    \texttt{ref.sample\_position(transcription.t)} (green).
+\end{itemize}
+
+The cold-started indirect trajectory veers off into a completely
+unphysical arc: the sequential linearization is stuck outside the
+basin of attraction and never recovers, exactly the failure mode the
+Pass-2 Armijo line search \emph{bounds} but does not cure. The
+warm-started iteration, in contrast, tracks the classical reference
+within a handful of outer iterations.
+
+\IfFileExists{../scripts/warm_start_aggressive.png}{%
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.72\textwidth]{../scripts/warm_start_aggressive.png}
+  \caption{Synthetic long-transfer stress test in the synodic frame,
+    three overlays: the direct-NLP classical reference (orange), the
+    cold-started indirect iteration (red dashed), and the same
+    indirect iteration warm-started from the reference (green). Only
+    the warm-started solve tracks the reference; the cold-started
+    iteration stalls outside the basin of attraction. These BCs are
+    chosen to keep the trajectory away from both primaries so the
+    $\Omega$-Hessian stays bounded --- they are a numerical benchmark
+    for the indirect iteration, not a mission geometry.}
+  \label{fig:warm-start}
+\end{figure}
+}{}
+
+Quantitatively, the nonlinear TPBVP residual history for the two
+seeds tracks the same pattern. The BC-only seed plateaus
+at $\|R_{\mathrm{NL}}\|_\infty \approx 13$ after two iterations and
+never moves. The direct-NLP warm start drops from $\approx 30$ to
+$\approx 0.74$ in three iterations --- roughly a $17\times$
+reduction --- and plateaus there. The remaining $\sim\! 0.74$
+residual is the last obstacle: it is a fixed point of the
+\emph{linearization} whose $\Omega$-Hessian freezing drift is small
+enough to be in the basin of the true TPBVP but too large to be
+zeroed by the pure Picard structure of the outer loop, which only
+relinearizes at committed nominals and therefore carries stale
+$A, B$ matrices inside each Armijo trial step. Cracking this
+remainder motivates a Levenberg--Marquardt / Gauss--Newton extension
+of \texttt{solve\_sequential} that relinearizes at every trial step
+during the backtrack; a direct-LGL pseudospectral transcription is
+held as a backup baseline for comparison. Project Task~8 will
+report whether the $\sim\! 0.74$ remainder matters for QUBO
+quality in practice.
+
+\IfFileExists{../scripts/convergence_history.png}{%
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.85\textwidth]{../scripts/convergence_history.png}
+  \caption{Nonlinear TPBVP residual vs.\ outer iteration on the
+    synthetic long-transfer benchmark, cold-start vs.\ warm-start
+    (log scale on the $y$-axis). The warm start drops from
+    $\approx 30$ to $\approx 0.74$ in three iterations; the cold
+    start plateaus near $13$ and does not move.}
+  \label{fig:convergence}
+\end{figure}
+}{}
+
+\newpage
+% ==================================================================
+\section{Code organization}
+% ==================================================================
+
+The codebase lives under \texttt{qalunar/} and is organized by
+separation of concerns:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+qalunar/
+  __init__.py
+  dynamics/
+    __init__.py
+    cr3bp.py                  # PlanarCR3BP: rhs, Jacobian, Jacobi integral
+  qubo/
+    __init__.py
+    linear_lsq.py             # build_linear_lsq_qubo + LinearLsqToQuboResult
+  transcription/
+    __init__.py
+    indirect_tfc_elm.py       # IndirectTfcElmTranscription + OuterLoopConfig
+  reference/
+    __init__.py
+    direct_collocation.py     # Hermite-Simpson NLP (warm start + baseline)
+    edelbaum.py               # analytical Phase-1 Earth-escape spiral
+tests/
+  test_cr3bp.py                        # 18 tests: L4/L5, df/dx vs FD, ...
+  test_qubo_linear_lsq.py              # 24 tests: energy identity, warm start
+  test_indirect_tfc_elm.py             # 51 tests: TFC, ELM, outer loop, line search
+  test_reference_direct_collocation.py # 20 tests: HS defects, warm-start
+  test_reference_edelbaum.py           # 26 tests: closed-form spiral, handoff
+scripts/
+  plot_cr3bp_overview.py              # primaries, L4/L5, ZVCs
+  plot_reference_trajectories.py      # Section 7 figures
+docs/
+  qalunar_manual.tex          # this document
+\end{lstlisting}
+
+\subsection{Running the tests}
+
+\begin{lstlisting}[language=bash]
+# from the project root
+python -m pytest -q
+\end{lstlisting}
+
+The full suite currently contains 139 tests and runs in roughly 2
+minutes (the bulk of the runtime is the SLSQP solves inside the
+direct-collocation tests). It is the first place to look when
+something is misbehaving: every mathematical identity in this manual
+corresponds to at least one executable assertion.
+
+\subsection{Key modules at a glance}
+
+\paragraph{\texttt{qalunar.dynamics.cr3bp}.}
+Planar CR3BP with a 2D thrust control. \texttt{PlanarCR3BP.rhs} and
+\texttt{jacobian\_state} implement equations
+\eqref{eq:cr3bp-1st-order} and the state Jacobian used for
+linearization. A \texttt{lagrange\_triangular\_points} helper
+returns $L_4$, $L_5$ symbolically. The Earth--Moon mass parameter is
+exposed as the module constant \texttt{EARTH\_MOON\_MU}.
+
+\paragraph{\texttt{qalunar.qubo.linear\_lsq}.}
+One-function entry point:
+\texttt{build\_linear\_lsq\_qubo(A, B, config)}. Returns a
+\texttt{LinearLsqToQuboResult} bundling the QUBO
+$(\Qmat, \bvec\ell, c)$, the decoding path $(\Vr,
+\bm\alpha_{\mathrm{offset}}, \text{step}_i)$, and diagnostics
+(singular spectrum, effective rank, Tikhonov solution,
+$\lambda_{\mathrm{tik}}$). Methods:
+\texttt{decode\_alpha}, \texttt{decode\_xi}, \texttt{energy},
+\texttt{warm\_start\_bits}.
+
+\paragraph{\texttt{qalunar.transcription.indirect\_tfc\_elm}.}
+The indirect TFC+ELM pipeline of Sections 4--6.
+\texttt{IndirectTfcElmTranscription} assembles the linear system of
+\eqref{eq:linear-system} for a given nominal via
+\texttt{build\_linear\_system}, and
+\texttt{solve\_sequential(cfg, initial\_nominal=...)} runs the outer
+loop: classical LSQ solve, decode, Pass-2 Armijo backtracking
+(Section~\ref{sec:armijo}), update nominal. Returns a
+\texttt{SequentialSolution} with \texttt{xi}, \texttt{trajectory} and
+a per-iteration \texttt{history} dict containing
+\texttt{trajectory\_change\_inf}, \texttt{linearized\_residual},
+\texttt{nonlinear\_residual} and \texttt{step\_size}.
+
+\paragraph{\texttt{qalunar.reference.direct\_collocation}.}
+The classical Hermite--Simpson direct collocation solver of
+Section~\ref{sec:reference}. Entry points:
+\texttt{DirectCollocationConfig}, \texttt{DirectCollocationResult}
+and the top-level function
+\texttt{solve\_energy\_optimal\_cr3bp(dynamics, r0, v0, rf, vf, T,
+config)}. The returned result carries \texttt{t, x, y, vx, vy, ux, uy},
+the SLSQP convergence status, and a \texttt{sample\_position(t\_query)}
+helper used to warm-start
+\texttt{IndirectTfcElmTranscription.solve\_sequential}.
+
+\paragraph{\texttt{qalunar.reference.edelbaum}.}
+Closed-form analytical solver for the Phase-1 Earth-escape spiral
+(Section~\ref{sec:example-trajectories}).
+\texttt{edelbaum\_spiral(r1, r2, a\_thrust, mu)} returns an
+\texttt{EdelbaumSpiral} dataclass holding $r_i, v_i, \Delta v, T,
+N_{\mathrm{rev}}, a_t$ in CR3BP nondimensional units. The
+\texttt{handoff\_state\_synodic()} method yields the synodic
+$(\bvec r, \bvec v)$ initial state for the Phase-2 direct NLP, and
+\texttt{si\_report()} returns a dict of pre-formatted SI-unit strings
+($\Delta v$ in m/s, TOF in days, etc.) for manual captions and
+progress logs.
+
+The indirect TFC+ELM pipeline produces a linear system
+$\Amat \bm\xi = \Bmat$ with decoding metadata compatible with
+\texttt{qubo.linear\_lsq}; a direct-LGL pipeline will land alongside
+it in \texttt{qalunar.transcription} as part of project Task~8.
+
+
+% ==================================================================
+\section{Convergence investigation and pivot}\label{sec:convergence-investigation}
+% ==================================================================
+
+The sequential linearization loop of the hybrid QUBO--classical pipeline
+was expected to converge toward the known direct-NLP solution.
+Extensive numerical experiments revealed two orthogonal failure modes
+that together make the continuous-lstsq QUBO approach unsuitable for
+production-quality trajectory optimization.
+
+\subsection{Armijo line search failure}
+
+The Armijo backtracking strategy (Pass~2) uses the fixed-point residual
+$m(\bar{\xvec}) = \|\xvec(\bm\xi(\bar{\xvec})) - \bar{\xvec}\|_\infty$
+as merit function.
+Diagnostic runs showed that this merit function is too noisy for the
+Picard map in the CR3BP: the Armijo condition is never satisfied at
+large step sizes, forcing $\alpha$ down to the floor
+$\alpha_{\min} = 0.001$ at every iteration.
+The effective update becomes negligibly small, and the nonlinear
+residual stagnates rather than converging.
+
+In contrast, \emph{undamped Picard iteration} (fixed $\alpha=1$, no
+line search) converges reliably on the same problems.  Using the
+classical NLP solution as an initial nominal and solving the inner
+lstsq problem exactly (not via QUBO), undamped Picard reduces the
+nonlinear residual from $5.7$ to $1.9 \times 10^{-5}$ in fewer than
+10~iterations and $0.2$~seconds of wall time.
+
+\begin{remark}
+This confirms that the sequential linearization itself is sound; the
+inner linear solve and the outer Picard update converge.  The Armijo
+mechanism was the bottleneck, not the linearization quality.
+\end{remark}
+
+\subsection{QUBO quantization error}\label{sec:qubo-quantization}
+
+Even after removing the Armijo failure (using $\alpha=1$), replacing
+the exact lstsq inner solve with the QUBO pipeline introduces a
+discretization error that prevents convergence.
+
+Each continuous reduced variable $\alpha_j$ is encoded as a
+$p$-bit binary expansion (Section~5):
+\[
+  \alpha_j \;\approx\; \alpha_j^{\min} + \Delta_j \sum_{k=0}^{p-1}
+  2^k\, q_{jp+k},
+  \qquad
+  \Delta_j = \frac{\alpha_j^{\max} - \alpha_j^{\min}}{2^p - 1}.
+\]
+With $p=8$ bits, each variable has a resolution of roughly
+$\Delta_j / 256$.  The QUBO ground state finds the best
+\emph{representable} $\bm\alpha$, which generically differs from the
+exact lstsq minimizer by $O(\Delta_j)$.
+
+At Picard iteration $k$, the update reconstructed from the QUBO
+solution carries this quantization error forward into the next
+nominal.  Because the linearization point has shifted by a
+quantization-scale perturbation rather than the true Newton step,
+subsequent iterations cannot reduce the residual below a floor set by
+$\Delta_j$.  Numerically, the hybrid loop with 8-bit encoding
+oscillates between nonlinear residuals of $\sim 7$--$12$ indefinitely,
+never approaching the $10^{-5}$ achievable by exact lstsq.
+
+Increasing $p$ would shrink $\Delta_j$ but expands the QUBO dimension
+(number of qubits) proportionally.  At $p=16$, the QUBO for a problem
+with $r = 30$ reduced variables already requires $480$~qubits and a
+$480 \times 480$ coupling matrix, and even 16-bit resolution
+($\sim 10^{-5}$ per variable) may not suffice for demanding transfers.
+
+\subsection{Why polishing does not save the approach}
+
+One could ``polish'' the QUBO output by running a classical lstsq step
+on the decoded continuous solution.  But this is scientifically
+misleading: the lstsq polish does the actual work of finding the
+continuous minimum, while the QUBO merely provides a warm start that
+the lstsq solver does not need.  Classical lstsq solves the inner
+problem in $\sim 5$~ms; the QUBO \emph{approximates} the same answer
+in orders of magnitude more time.
+
+\subsection{Conclusion: the continuous-lstsq QUBO is the wrong problem}
+
+The Carbone et~al.\ approach~\cite{Carbone2025} works for the
+particular problem it was designed for (HCW rendezvous with a single
+linear solve), but does not generalize well to nonlinear problems
+requiring iterative refinement.  The fundamental mismatch is that QUBO
+variables are binary, yet the underlying optimization variables are
+continuous.  Artificially encoding continuous variables as bitstrings
+introduces quantization error that dominates the solution quality.
+
+This motivates a search for problems where the decision variables are
+\emph{inherently binary}, so that the QUBO formulation is exact rather
+than an approximation.
+
+
+% ==================================================================
+\section{On/off thrust scheduling via QUBO}\label{sec:thrust-scheduling}
+% ==================================================================
+
+Low-thrust engines can operate in two modes: on (full thrust) or off
+(coasting).  Given a transfer window divided into $N$ time steps, the
+decision ``fire at step $i$?''\ is a naturally binary variable
+$q_i \in \{0, 1\}$.  The search space of $2^N$ possible schedules is
+combinatorially hard for classical exhaustive search, making this an
+ideal candidate for quantum annealing.
+
+\subsection{Problem setup}
+
+Consider a spacecraft in the planar CR3BP with initial state
+$\xvec_0 = (x_0, y_0, \dot x_0, \dot y_0)\TT$.
+The time interval $[t_0, t_f]$ is divided into $N$ decision intervals
+of length $\Delta t = (t_f - t_0)/N$.  At each interval $i$, the
+engine is either on ($q_i = 1$, applying thrust acceleration $\uvec_i$)
+or off ($q_i = 0$, coasting).
+
+The thrust direction at each step can be:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{tangential} --- along the velocity vector,
+  \item \textbf{anti-tangential} --- opposite to the velocity vector, or
+  \item \textbf{fixed} --- a constant direction $\hat{\uvec}$ specified
+    by the user.
+\end{itemize}
+In all cases, the magnitude $\|\uvec_i\| = a_T$ is constant (on/off
+model: full thrust or zero).
+
+\subsection{Linearization via the state transition matrix}
+
+To formulate a QUBO, the effect of each burn on the final state must
+be expressed as a linear function of the binary variables $q_i$.
+
+\paragraph{Coast arc and STM.}
+First, propagate the uncontrolled (coast) trajectory from $\xvec_0$
+over $[t_0, t_f]$ using the CR3BP equations of motion.  Simultaneously
+integrate the state transition matrix (STM) via the variational
+equations:
+\[
+  \dot{\Phi}(t, t_0) = \bvec A(t)\,\Phi(t, t_0),
+  \qquad \Phi(t_0, t_0) = \bvec I_{4\times 4},
+\]
+where $\bvec A(t)$ is the Jacobian of the CR3BP right-hand side
+evaluated along the coast arc.  The implementation integrates the
+augmented 20-dimensional system
+$\bvec z = (\xvec, \mathrm{vec}(\Phi))$ using fixed-step RK4.
+
+The STM $\Phi(t_i, t_f)$ from decision point $t_i$ to the final time
+is obtained by composition:
+\[
+  \Phi(t_i, t_f) = \Phi(t_f, t_0)\,\Phi(t_i, t_0)^{-1}.
+\]
+
+\paragraph{Impulse response vectors.}
+The control influence matrix for the planar CR3BP is
+\[
+  \bvec B_{\mathrm{ctrl}} =
+  \begin{pmatrix} 0 & 0 \\ 0 & 0 \\ 1 & 0 \\ 0 & 1 \end{pmatrix},
+\]
+so an impulsive thrust acceleration $\uvec_i$ at time $t_i$ produces
+a first-order change at $t_f$ of:
+\[
+  \bvec b_i \;=\; \Phi(t_i, t_f)\, \bvec B_{\mathrm{ctrl}}\, \uvec_i\,
+  \Delta t.
+\]
+The vector $\bvec b_i \in \R^4$ encodes the full effect of burning at
+step $i$ on the final position and velocity.
+
+\paragraph{Total effect of a schedule.}
+The superposition principle (valid under the linearization) gives the
+final-state deviation from the coast arc as:
+\[
+  \delta\xvec(t_f) \;\approx\; \sum_{i=1}^{N} q_i\, \bvec b_i.
+\]
+
+\subsection{QUBO formulation}
+
+Let $\bvec d = \xvec_{\mathrm{target}} - \xvec_{\mathrm{coast}}(t_f)$
+be the state gap that the burns must close.  The objective balances
+trajectory accuracy against fuel usage:
+\begin{equation}\label{eq:scheduling-qubo}
+  f(\bvec q) \;=\;
+  \underbrace{
+    \left\|\sum_{i=1}^{N} q_i\, \bvec b_i - \bvec d\right\|_{\bvec W}^2
+  }_{\text{miss distance}}
+  \;+\;
+  \underbrace{
+    \alpha \sum_{i=1}^{N} q_i
+  }_{\text{fuel penalty}},
+\end{equation}
+where $\bvec W = \mathrm{diag}(w_1, w_2, w_3, w_4)$ allows
+per-component weighting (e.g.\ position only) and $\alpha \ge 0$
+penalizes the number of burn segments.
+
+Expanding the quadratic norm and using $q_i^2 = q_i$ for binary
+variables:
+\begin{align}
+  Q_{ij} &= \bvec b_i\TT \bvec W\, \bvec b_j,
+    &&\text{quadratic coupling (symmetric)},
+    \label{eq:Q-scheduling}\\
+  \ell_i &= \alpha - 2\,\bvec b_i\TT \bvec W\, \bvec d,
+    &&\text{linear term},
+    \label{eq:ell-scheduling}\\
+  c &= \bvec d\TT \bvec W\, \bvec d,
+    &&\text{constant offset.}
+    \label{eq:const-scheduling}
+\end{align}
+
+The QUBO energy is then
+$f(\bvec q) = \bvec q\TT \Qmat\, \bvec q + \bm\ell\TT \bvec q + c$.
+
+\begin{remark}
+Unlike the continuous-lstsq QUBO of Section~5, there is no
+quantization error whatsoever: every $q_i$ \emph{is} a physical
+binary decision, and the QUBO exactly encodes the scheduling
+objective \eqref{eq:scheduling-qubo}.  The only approximation is
+the linearization of thrust effects via the STM, which is standard
+practice in preliminary mission design.
+\end{remark}
+
+\subsection{Solvers}
+
+\paragraph{Brute force.}
+For $N \le 20$ ($2^{20} \approx 10^6$ evaluations), the global
+optimum is found by exhaustive enumeration.  This provides a ground
+truth against which heuristic solvers are validated.
+
+\paragraph{Simulated annealing (SA).}
+The QUBO is converted to a \texttt{dimod.BinaryQuadraticModel} and
+sampled using \texttt{neal.SimulatedAnnealingSampler}.  SA matches
+the brute-force optimum on all problem sizes tested ($N = 8$ to $20$)
+with 500--1000 reads.
+
+\paragraph{D-Wave quantum processing unit (QPU).}
+The scheduling QUBO maps directly to D-Wave hardware: each decision
+step is one physical qubit, and the $Q_{ij}$ couplings are programmed
+onto the Pegasus/Zephyr topology.  With $N$ qubits, the problem fits
+comfortably within the Advantage2 processor's 5000+ qubits, even for
+$N$ in the hundreds.
+
+\paragraph{Mixed-integer linear programming (MILP) baseline.}
+A classical, provably optimal baseline is obtained by lifting the
+binary-quadratic objective to a pure MILP via the McCormick
+linearization
+\(
+  y_{ij} \le q_i,\;
+  y_{ij} \le q_j,\;
+  y_{ij} \ge q_i + q_j - 1,\;
+  y_{ij} \in \{0,1\},
+\)
+which exactly enforces $y_{ij} = q_i q_j$.  Substituting
+$q_i^2 = q_i$ for binary variables, the QUBO energy becomes
+\[
+  E(\bvec q) = \sum_{i} (Q_{ii} + l_i)\, q_i
+             + \sum_{i<j} 2\, Q_{ij}\, y_{ij} + \mathrm{const},
+\]
+which is linear in $(\bvec q, \bvec y)$ and solvable by HiGHS through
+\texttt{scipy.optimize.milp}.  This provides certified optimality for
+small to medium $N$ and a neutral classical scaling reference.
+
+\subsection{Iterative re-linearization}\label{sec:iterative-relinearization}
+
+The QUBO uses a single first-order STM expansion around a reference
+trajectory.  For a long arc or a strong thrust the linearization
+error accumulates: the schedule that minimizes the linearized
+objective need not minimize the true nonlinear miss, and may even
+\emph{increase} it.  We address this with a sequential
+re-linearization driver, the binary analogue of the continuous-side
+Pass-2 loop in Section~\ref{sec:sequential-linearization}.
+
+Let $\bvec q^{(k)}$ be the schedule at iteration $k$ and let
+$\bvec x^{(k)}_{\mathrm{nom}}(t)$ be the trajectory obtained by
+propagating the true nonlinear CR3BP under the controls implied by
+$\bvec q^{(k)}$.  We linearize the final state as
+\begin{equation}\label{eq:lin-around-q}
+  \bvec x(t_f) \;\approx\; \bvec x^{(k)}_{\mathrm{nom}}(t_f)
+  \;+\; \sum_j (q_j - q^{(k)}_j)\, \bvec b^{(k)}_j,
+\end{equation}
+where $\bvec b^{(k)}_j$ is the impulse-response vector evaluated using
+STMs along $\bvec x^{(k)}_{\mathrm{nom}}(t)$.  Substituting into the
+miss-distance penalty and absorbing the linear shift into an
+\emph{effective} target gap
+\[
+  \bvec d_{\mathrm{eff}}^{(k)}
+  = \big(\bvec x_{\mathrm{target}} - \bvec x^{(k)}_{\mathrm{nom}}(t_f)\big)
+  + \sum_j q^{(k)}_j\, \bvec b^{(k)}_j ,
+\]
+yields a QUBO of the same algebraic form as
+\eqref{eq:multi-qubo} with $\bvec d \to \bvec d_{\mathrm{eff}}^{(k)}$
+and $\bvec b \to \bvec b^{(k)}$.
+
+The outer loop is then:
+\begin{enumerate}[leftmargin=1.5em, itemsep=1pt]
+  \item Initialize $\bvec q^{(0)} = \bvec 0$ (coast).
+  \item Build the QUBO linearized around $\bvec q^{(k)}$.
+  \item Sample a candidate $\hat{\bvec q}$ (any sampler: BF, SA, MILP,
+    Leap Hybrid, QPU).
+  \item Propagate $\hat{\bvec q}$ under the true nonlinear dynamics
+    and measure the actual miss
+    $\|\bvec x(t_f) - \bvec x_{\mathrm{target}}\|$.
+  \item \emph{Trust-region accept:} if the candidate's true miss
+    decreases, accept ($\bvec q^{(k+1)} \leftarrow \hat{\bvec q}$);
+    else terminate.
+  \item Stop when the schedule is a fixed point or the miss
+    improvement falls below tolerance.
+\end{enumerate}
+
+Step~5 is the key safeguard.  The linearized model is only locally
+accurate; a candidate that the QUBO predicts to be better may in fact
+worsen the true miss because the linearization is loose.  Rejecting
+non-improving candidates makes the loop monotone in the truth metric
+and guarantees that the returned schedule is no worse than coast — a
+property the single-pass solve does not have.
+
+\subsection{Multi-direction scheduling}\label{sec:multi-direction}
+
+The single-channel formulation restricts thrust to a single direction
+(e.g.\ tangential) at every step.  In practice, a spacecraft may need
+to combine thrust components along different axes.  The
+\emph{multi-channel} extension introduces $K$ independent thrust
+directions, each with its own on/off binary variable per step.
+
+\paragraph{Variable structure.}
+Let the thrust channels be labelled $c = 1, \dots, K$ (e.g.\
+$K = 2$ for tangential and normal).  At each decision step $i$, the
+QUBO contains one variable $q_{c,i} \in \{0,1\}$ per channel.  The
+total number of binary variables is $M = K \cdot N$.  Variables are
+ordered channel-major:
+\[
+  \bvec q = (\underbrace{q_{1,1}, \dots, q_{1,N}}_{\text{channel 1}},\;
+             \underbrace{q_{2,1}, \dots, q_{2,N}}_{\text{channel 2}},\;
+             \dots)
+  \;\in\; \{0,1\}^M.
+\]
+
+\paragraph{Available directions.}
+Four velocity-relative directions are supported:
+\begin{itemize}[leftmargin=1.5em, itemsep=1pt]
+  \item \textbf{tangential} --- along $\bvec v / \|\bvec v\|$,
+  \item \textbf{anti-tangential} --- opposite to $\bvec v$,
+  \item \textbf{normal} --- perpendicular to $\bvec v$, rotated
+    $90^\circ$ counter-clockwise,
+  \item \textbf{anti-normal} --- opposite to normal.
+\end{itemize}
+These are evaluated at the coast-arc state at each decision point, so
+the direction naturally follows the spacecraft's trajectory.
+
+\paragraph{QUBO assembly.}
+Each (channel, step) pair contributes an impulse response vector
+$\bvec b_{c,i} = \Phi(t_i, t_f)\, \bvec B_{\mathrm{ctrl}}\,
+\uvec_{c,i}\, \Delta t$, where $\uvec_{c,i}$ is the thrust
+acceleration vector for channel $c$ at step $i$.  The QUBO objective
+generalizes naturally:
+\begin{equation}\label{eq:multi-qubo}
+  f(\bvec q) = \left\|
+    \sum_{c=1}^{K} \sum_{i=1}^{N} q_{c,i}\, \bvec b_{c,i} - \bvec d
+  \right\|_{\bvec W}^2
+  + \alpha \sum_{c,i} q_{c,i}.
+\end{equation}
+The $M \times M$ QUBO matrix $\Qmat$ has the same structure as
+\eqref{eq:Q-scheduling}--\eqref{eq:const-scheduling}, with the
+summation indices running over all $(c, i)$ pairs.
+
+\paragraph{Mutual exclusion constraint.}
+If the spacecraft has a single engine that cannot fire in two
+directions simultaneously, an exclusion penalty is added:
+\[
+  f_{\mathrm{excl}}(\bvec q) = P \sum_{i=1}^{N} \sum_{c < c'}
+  q_{c,i}\, q_{c',i},
+\]
+where $P$ is a penalty weight chosen large enough to make
+simultaneous firing energetically unfavorable.  This adds $P$ to the
+off-diagonal QUBO entries coupling channels at the same step, and
+preserves the QUBO structure — no auxiliary variables are needed.
+
+\paragraph{Scaling.}
+With $K$ channels and $N$ steps, the QUBO has $M = KN$ variables.
+For $K = 2$ (tangential $+$ normal), a 50-step problem requires
+100~qubits — still well within hardware limits.  The search space
+grows to $2^{KN}$, making the combinatorial advantage of quantum
+annealing even more relevant than in the single-channel case.
+
+
+% ==================================================================
+\section{Scheduling results}\label{sec:scheduling-results}
+% ==================================================================
+
+\subsection{Validation: SA matches brute force}
+
+A cislunar transfer scenario was constructed with initial state
+near Earth, a target generated by continuous thrust propagation, and
+$N = 15$ decision steps.  The QUBO was solved by both brute force and
+simulated annealing (1000 reads).  SA recovered the exact brute-force
+optimum in every run, confirming that the QUBO energy landscape is
+well-conditioned for annealing-based samplers.
+
+\subsection{Scaling analysis}
+
+The critical motivation for quantum annealing is scaling.
+Table~\ref{tab:scheduling-scaling} reports solve times for brute force
+and SA as $N$ increases.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrrl}
+  \toprule
+  $N$ & $2^N$ & BF (ms) & SA (ms) & SA = BF? \\
+  \midrule
+   8 &       256 &      3 &    133 & Y \\
+  10 &     1\,024 &      8 &    137 & Y \\
+  12 &     4\,096 &     30 &    148 & Y \\
+  14 &    16\,384 &    116 &    159 & Y \\
+  16 &    65\,536 &    435 &    181 & Y \\
+  18 &   262\,144 &  1\,920 &    215 & Y \\
+  20 & 1\,048\,576 & 10\,100 &    249 & Y \\
+  \bottomrule
+\end{tabular}
+\caption{Brute-force vs.\ simulated-annealing solve times for
+  the on/off scheduling QUBO.  SA matches the brute-force global
+  optimum at every size tested.  BF time doubles with each additional
+  step ($O(2^N)$); SA grows slowly.}
+\label{tab:scheduling-scaling}
+\end{table}
+
+Key observations:
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+  \item \textbf{Brute force} scales as $O(2^N)$: doubling time with
+    each additional decision step.  At $N=20$ it takes $\sim 10$~s;
+    at $N=30$ the extrapolated time exceeds $10^4$~s ($\sim 3$~hours);
+    at $N=50$ it is astronomically large ($\sim 10^{15}$ evaluations).
+  \item \textbf{Simulated annealing} grows subexponentially in this
+    regime and matches the brute-force optimum for all $N \le 20$.
+    However, SA is a heuristic: there is no guarantee it will find the
+    global minimum for larger $N$ with strong couplings.
+  \item \textbf{D-Wave QPU} anneal time is $\sim 20$~\si{\micro\second}
+    regardless of $N$, as long as the QUBO fits on the hardware graph.
+    A 50-step scheduling problem requires 50~qubits, well within the
+    Advantage2 processor's $>5000$-qubit capacity.
+\end{itemize}
+
+\subsection{Where quantum advantage emerges}
+
+The regime $N \gtrsim 30$ is where quantum annealing becomes
+compelling:
+\begin{itemize}[leftmargin=1.5em, itemsep=2pt]
+  \item Classical brute force is intractable ($2^{30} > 10^9$).
+  \item SA may find good solutions but lacks optimality guarantees.
+  \item The QPU solves the \emph{exact same} QUBO in
+    $\sim 20$~\si{\micro\second}, with the annealing physics
+    naturally exploring the combinatorial landscape.
+\end{itemize}
+This is a qualitative difference from the continuous-lstsq QUBO, where
+the QPU was solving a worse approximation of a problem that classical
+methods handle exactly.  Here, the QPU solves the \emph{exact}
+problem, and it does so faster.
+
+\subsection{Multi-direction results}
+
+Table~\ref{tab:multi-direction} compares single-channel (tangential
+only) and multi-channel (tangential~$+$~normal) scheduling on a
+lateral-correction scenario with $N = 10$ decision steps and
+position-only targeting ($W = \mathrm{diag}(1,1,0,0)$).
+The spacecraft departs from a high Earth orbit ($r \approx 200\,000$~km)
+and the target is generated by propagating with pure normal thrust
+($a = 0.02$, $t \in [0, 1]$), creating a gap that tangential burns
+alone cannot close effectively.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrrrl}
+  \toprule
+  Mode & Qubits & Burns & Position miss & Improvement \\
+  \midrule
+  Tangential only         & 10 &  1 & $1.02 \times 10^{-2}$ & (baseline) \\
+  Tangential $+$ Normal   & 20 &  9 & $2.61 \times 10^{-5}$ & $-99.7\%$ \\
+  Exclusive (tan $+$ nor) & 20 &  9 & $8.18 \times 10^{-5}$ & $-99.2\%$ \\
+  \bottomrule
+\end{tabular}
+\caption{Comparison of single- and multi-channel scheduling on a
+  lateral-correction scenario.  The multi-channel QUBO combines
+  tangential and normal burns to reduce the position miss by nearly
+  three orders of magnitude.  The exclusive variant, which enforces at
+  most one channel per step via a quadratic penalty, still achieves
+  $99.2\%$ improvement by alternating between thrust directions.}
+\label{tab:multi-direction}
+\end{table}
+
+The multi-channel advantage emerges when the target requires
+corrections outside the velocity direction.  The scenario uses
+position-only targeting, which is physically realistic for waypoint
+problems where velocity can be corrected by a subsequent maneuver.
+The key insight is that the STM couples all state components over
+long arcs, washing out the distinction between thrust directions.
+A shorter transfer arc ($t_f = 1$ vs.\ $t_f = 3$) preserves the
+directional separation and allows normal burns to retain their
+lateral character at the final time.
+
+The multi-channel formulation scales naturally:
+With $K = 2$ channels and $N = 50$ steps, the QUBO has
+$M = 100$~binary variables — a $2^{100}$ search space that is utterly
+intractable by brute force but fits on 100~physical qubits.
+
+\subsection{Linearization-gap and iterative correction}\label{sec:lin-gap}
+
+The single-pass QUBO assumes the first-order STM expansion is
+accurate over the whole time interval.  In a long-arc cislunar
+correction at $T = 4$ nondim ($N = 15$,
+$v_\mathrm{inj}/v_\mathrm{circ} = 1.187$) the assumption fails:
+the QUBO's optimum schedule, when propagated under the true
+nonlinear CR3BP, lands $\sim 143\,000$~km from the target, almost
+identical to coast and far from the linearised
+prediction.  The iterative re-linearisation driver
+(Section~\ref{sec:iterative-relinearization}) re-builds the QUBO
+around the current schedule at each outer iteration and applies
+a trust-region accept rule; on this scenario it converges in four
+outer iterations to a schedule whose true miss is $\sim 4\,800$~km,
+a $30 \times$ reduction at the cost of one extra burn.
+Figure~\ref{fig:lin-gap} compares the two trajectories side by
+side.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{../scripts/iterative_vs_singlepass_trajectory.png}
+  \caption{Single-pass QUBO (left panel) versus iterative
+    re-linearisation (right panel) on a long-arc cislunar
+    correction at $T = 4$ nondim. The blue star is the target
+    final state; the cross is each schedule's achieved final
+    state. The single-pass scheduler picks two burns (red
+    segments) whose linearised effect is correct but whose
+    nonlinear effect leaves the spacecraft on a markedly
+    different arc. The iterative scheduler converges in four
+    outer iterations to a three-burn schedule that lands within
+    $4\,800$~km of the target.}
+  \label{fig:lin-gap}
+\end{figure}
+
+For arcs longer than $T \approx 5$ nondim the linearisation is so
+loose that the first candidate is non-improving and the iterative
+loop terminates at coast --- it \emph{abstains} rather than
+acting on bad information.  The single-pass solve, lacking the
+trust-region rule, would in this regime recommend a schedule that
+is worse than doing nothing.
+
+\subsection{Second application: lunar-orbit station-keeping}\label{sec:moon-orbit}
+
+The same iterative scheduler applies to mission phases beyond
+injection correction.  Figure~\ref{fig:moon-orbit} shows a
+$5\,000$-km circular lunar orbit perturbed by a $0.5\%$
+tangential velocity error at $t_0$.  Without correction the
+spacecraft drifts $\sim 1\,300$~km from the nominal endpoint
+after two revolutions; the iterative QUBO selects a single
+anti-tangential channel and uses $4.4$~m/s of $\Delta v$ to
+reduce the position miss to $\sim 530$~km.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.98\textwidth]{../scripts/moon_orbit_stationkeeping.png}
+  \caption{Lunar-orbit station-keeping with the iterative QUBO
+    at the same spacecraft class as the injection-correction
+    scenario (100-kg microsatellite, $5.4$-mN ion thruster).
+    Left: synodic frame zoomed near the Moon over two
+    revolutions ($\sim 28$~hours).  Right: Moon-relative frame
+    in km.  The QUBO uses position-only target weighting
+    ($W = \mathrm{diag}(1,1,0,0)$), so a phase-shift along the
+    orbit affects the velocity vector but not the position
+    objective --- the right metric for a station-keeping
+    mission that cares about position, not phase.}
+  \label{fig:moon-orbit}
+\end{figure}
+
+\subsection{Classical MILP baseline}
+
+The MILP lift described in Section~\ref{sec:thrust-scheduling}
+provides a certified-optimal classical reference at small to medium
+$N$.  Solved through HiGHS via \texttt{scipy.optimize.milp}, the
+lift produces an exact optimum at $N = 20$ in $\sim 12$~s with
+optimality certificate; at $N = 30$ the same solver cannot certify
+optimality within a 120-second budget but returns a feasible
+incumbent indistinguishable from SA.  The McCormick lift creates
+$N(N{-}1)/2$ auxiliary binaries and a dense LP relaxation, so the
+classical-MILP scaling crosses the simulated-annealing curve in the
+$N \approx 25$--$30$ region.  This is the operationally relevant
+crossover: where SA dominates a state-of-the-art classical
+exact solver, the case for moving to D-Wave hardware becomes
+quantitatively defensible.
+
+
+% ==================================================================
+\section{Multi-arc capture and end-to-end mission}\label{sec:multi-arc}
+% ==================================================================
+
+The iterative re-linearisation of
+Section~\ref{sec:iterative-relinearization} closes the
+linearisation gap of a \emph{single} arc. To complete the mission
+(spiral out from GEO, correct the cislunar transfer, and capture
+into a bound lunar orbit) we extend the scheduler in two ways:
+a sliding-window structure that chains short single-arc QUBOs
+across many lunar revolutions, and a composition-of-phases
+structure that switches the action set, target weighting and
+thrust regime as the spacecraft moves between Earth-, cislunar-
+and Moon-dominated regimes.
+
+% ------------------------------------------------------------------
+\subsection{Sliding-window QUBO for lunar capture (Phase 3)}\label{sec:sliding-window}
+% ------------------------------------------------------------------
+
+A representative case the single-arc QUBO cannot handle is lunar
+orbit insertion (LOI) from a hyperbolic flyby: the spacecraft
+passes the Moon once, must shed several tens of metres per second
+of excess velocity to bind its orbit, and then circularise over
+many subsequent revolutions. A single-arc QUBO covering this entire
+process would have a linearisation gap so large that no schedule
+survives the trust-region rule of
+Section~\ref{sec:iterative-relinearization}. The implementation
+lives in \texttt{qalunar/qubo/lunar\_capture.py} and is exposed as
+\texttt{solve\_lunar\_capture\_sliding\_window}.
+
+\paragraph{Sliding-window structure.} We split the mission into $W$
+short arcs of duration $\Delta T_w$, each of which is small enough
+that the iterative re-linearisation converges. Between windows the
+spacecraft state is propagated under the true nonlinear CR3BP and
+becomes the initial state of the next window. The total schedule
+is the concatenation of per-window schedules.
+
+\paragraph{Window-length cap.} The natural choice for $\Delta T_w$
+is a fraction of the local Moon-relative orbital period
+$T_\mathrm{loc} = 2\pi\sqrt{r_w^3/\mu}$, with $r_w$ the
+Moon-relative radius at the start of window~$w$. This adapts the
+window to the local dynamics. However, $T_\mathrm{loc}$ diverges
+as $r_w$ grows (loose orbits or escapes), and an unguarded
+fractional-period window would become arbitrarily long once the
+orbit is large -- by which point the linearisation has long since
+collapsed. We therefore cap $\Delta T_w$ at a fixed
+$\Delta T_\mathrm{max}$ so the linearisation regime stays valid
+even when the orbit is loose.
+
+\paragraph{Action-radius gating.} A second safeguard restricts QUBO
+scheduling to windows in which the spacecraft is within a threshold
+$r_\mathrm{act}$ of the Moon. Outside this radius, dynamics are
+dominated by Earth and the Moon-relative linear target is
+meaningless: every candidate fails the trust-region rule and the
+loop produces no progress while burning through windows. With
+gating, those windows become unforced drifts -- the spacecraft is
+propagated freely under the CR3BP until it returns inside
+$r_\mathrm{act}$, at which point QUBO scheduling resumes. Choosing
+$r_\mathrm{act}$ on the order of a few perilune radii confines the
+QUBO action to the region where anti-tangential thrust efficiently
+dissipates orbital energy.
+
+\paragraph{Per-window target.} For each window, we set the QUBO
+target to a state whose Moon-relative inertial velocity has
+magnitude $v_\mathrm{circ}(r) = \sqrt{\mu/r}$ in the direction of
+the spacecraft's current Moon-relative velocity, evaluated at the
+unforced end-of-window position $\xvec_\mathrm{eow}$:
+\begin{equation}\label{eq:sw-target}
+  \xvec_\mathrm{target}^{(w)}
+  = \big[\,
+      \bvec{r}_\mathrm{eow},\;
+      v_\mathrm{circ}(\|\bvec{r}_\mathrm{eow} - \bvec{r}_\mathrm{Moon}\|)\,
+      \hat{\bvec{v}}_\mathrm{Moon\text{-}rel}^{\,\mathrm{eow}}
+    \,\big]
+\end{equation}
+expressed in the synodic frame after the standard $\bvec{\omega}\times\bvec{r}$
+correction. Position is left unweighted ($W_\mathrm{pos} = 0$) and only
+velocity components are weighted in the QUBO objective: the target
+says \emph{stay where the unforced trajectory takes you, but slow to
+the local circular speed}. With a single anti-tangential channel,
+this target elicits firings precisely where the spacecraft is moving
+faster than circular -- i.e.\ near perilune of an elliptical pass --
+which is the energy-dissipation regime for lunar capture and
+circularisation. At apolune the spacecraft is already slower than
+$v_\mathrm{circ}$, anti-tangential thrust cannot speed it up, and
+the QUBO correctly stays off.
+
+\paragraph{Termination and diagnostics.} The outer loop terminates
+after $W$ windows have been processed. We monitor the two-body
+energy
+$E_w = \tfrac{1}{2}\|\bvec{v}_w^\mathrm{rel}\|^2 -
+\mu/\|\bvec{r}_w^\mathrm{rel}\|$
+and the Moon-relative apolune radius $r_\mathrm{apo}$ across
+windows. Captured states have $E_w < 0$ and finite
+$r_\mathrm{apo}$; loose-orbit windows have $r_\mathrm{apo}$ in the
+tens of thousands of kilometres; escaped or pre-capture states
+have $E_w \ge 0$ and $r_\mathrm{apo} = \infty$.
+
+\paragraph{Per-window guarantees.} Each window is itself a call to
+the iterative driver of
+Section~\ref{sec:iterative-relinearization} with a short
+$\Delta T_w$, so the trust-region monotonicity property applies
+window-by-window: the schedule produced for window~$w$ has true
+nonlinear miss no worse than coast \emph{within that window}. The
+composition does not admit a global monotonicity guarantee in
+$E_w$ because the unforced drift between windows can both raise or
+lower the energy under CR3BP perturbations, but in practice
+anti-tangential firings near perilune dominate and the energy
+decreases over the course of the schedule (see
+Section~\ref{sec:end-to-end-manual}).
+
+\paragraph{Sensitivity sweep.} The three principal parameters
+($\Delta T_\mathrm{max}$, $r_\mathrm{act}$, brake factor on
+$v_\mathrm{circ}$) trade off as expected: larger
+$\Delta T_\mathrm{max}$ allows more burn slots per window but
+worsens the in-window linearisation; larger $r_\mathrm{act}$
+allows scheduling further from the Moon at the cost of less
+effective burns; a brake factor below $1$ targets a sub-circular
+speed and produces lower-apolune captures at higher $\Delta v$
+cost. The sweep is reproduced by
+\texttt{scripts/run\_sliding\_window\_sweep.py} and reported in
+the companion paper.
+
+% ------------------------------------------------------------------
+\subsection{End-to-end mission: composing Phases 1, 2 and 3}\label{sec:end-to-end-manual}
+% ------------------------------------------------------------------
+
+The end-to-end demo
+(\texttt{scripts/run\_full\_mission\_demo.py} for numbers,
+\texttt{scripts/run\_mission\_figure.py} and
+\texttt{run\_continuity\_figure.py} for figures) flies a single
+\SI{100}{\kg} microsatellite with a single throttleable ion/Hall
+thruster (\SI{350}{\milli\newton} main, \SI{5.4}{\milli\newton}
+cruise) from GEO to a bound near-circular lunar orbit, with no
+impulsive burns. The three phases share the same spacecraft and
+the same engine; only the throttling state, the action channel
+and the target weighting change between phases.
+
+\paragraph{Phase 1 -- Earth ascent + injection boost.} The
+analytical Edelbaum spiral of
+Section~\ref{sec:thrust-scheduling} (implemented in
+\texttt{qalunar/reference/edelbaum.py}) lifts the spacecraft from
+GEO ($r \approx \SI{42164}{\km}$) to a circular parking orbit at
+$r = \SI{200000}{\km}$ at \emph{main} thrust. A continuous
+all-on tangential arc on the same thruster then adds the
+$\SI{264}{\meter\per\second}$ needed to inject onto a Moon-bound
+trajectory; this corresponds to \SI{20.9}{\hour} of thrust and
+replaces what would otherwise be an impulsive chemical burn.
+Phase~1 totals $\Delta v \approx \SI{1924}{\meter\per\second}$
+over \SI{6.4}{\day}.
+
+\paragraph{Phase 2 -- cislunar correction.} The thruster throttles
+to cruise so each binary slot delivers the
+$\sim \SI{4.4}{\meter\per\second}$ needed to discriminate
+trajectory corrections at the metres-per-second level. This phase
+is exactly the long-arc scenario validated in
+Section~\ref{sec:lin-gap}: $T = 4$ nondim, $N = 15$, iterative
+re-linearisation, $\Delta v \approx \SI{16}{\meter\per\second}$
+in three burns over \SI{17.4}{\day}, leaving the spacecraft on a
+hyperbolic flyby with perilune at $\sim$~\SI{4500}{\km} altitude.
+
+\paragraph{Phase 3 -- sliding-window lunar capture.} The thruster
+returns to main power and the sliding-window scheduler of
+Section~\ref{sec:sliding-window} runs from the raw Phase-2
+perilune state -- no impulsive pre-capture burn. With
+$\Delta T_\mathrm{max} = 0.01$ nondim ($\sim$~\SI{1}{\hour}),
+$N = 12$ decision steps per window, an action radius of
+$3\,r_\mathrm{perilune}$, and a single anti-tangential channel,
+the loop fires during the close approach to the Moon. After
+$\sim$~\num{200} windows the energy has dropped from $E = +0.087$
+(hyperbolic) to $E = -0.38$ (bound) and the apolune has collapsed
+from infinity to $r_\mathrm{apo} \approx \SI{6212}{\km}$, a
+near-circular bound orbit at the perilune radius. Phase~3 expends
+$\Delta v \approx \SI{561}{\meter\per\second}$ in \SI{8}{\day}.
+
+\paragraph{Mission totals.} The complete mission delivers
+$\Delta v_\mathrm{total} \approx \SI{2502}{\meter\per\second}$ in
+\SI{31.8}{\day} of flight, with every metre per second produced by
+binary on/off commands of a single throttleable thruster
+(Table~\ref{tab:end-to-end-manual}). Phase~1 dominates the
+$\Delta v$ budget at \(77\%\) of the total, Phase~3 is the
+second-largest cost at \(22\%\), and Phase~2 contributes
+\(0.6\%\), essentially free in comparison; yet without the
+Phase-2 correction the \num{22000}-km miss precludes any usable
+perilune passage and the mission cannot continue.
+
+\begin{table}[htbp]
+\centering
+\caption{All-binary Earth--Moon mission breakdown. Single
+\SI{100}{\kg} microsatellite with a throttleable ion/Hall thruster
+(\SI{350}{\milli\newton} main / \SI{5.4}{\milli\newton} cruise).
+No impulsive burns.}
+\label{tab:end-to-end-manual}
+\begin{tabular}{lrrl}
+\toprule
+Phase & $\Delta v$ (m/s) & TOF (days) & Mode \\
+\midrule
+1: Edelbaum spiral + injection boost
+  & \num{1924} & \num{6.4} & main, tangential \\
+2: cislunar correction (QUBO)
+  & \num{16}   & \num{17.4} & cruise, tangential \\
+3: sliding-window QUBO capture
+  & \num{561}  & \num{8.0}  & main, anti-tangential \\
+\midrule
+Total
+  & \num{2502} & \num{31.8} & all binary \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Why throttling is necessary.} Bumping every phase to
+main thrust breaks Phase~2: at \SI{350}{\milli\newton} each binary
+slot delivers $\sim \SI{350}{\meter\per\second}$, vastly more
+than the metres-per-second resolution needed to discriminate good
+trajectory corrections. The QUBO either fires zero slots
+(under-correction) or a single slot (overshooting by an order of
+magnitude). Throttling to \SI{5.4}{\milli\newton} restores the
+fine-grained regime that Phase~2 requires.
+
+\paragraph{Why the action-radius gate is necessary.} Without
+gating, the sliding-window solver fires the QUBO during windows in
+which the spacecraft is close to L1 and dominated by Earth's
+gravity. The Moon-relative circular target has no physical meaning
+in that regime; the trust-region rule rejects every candidate, but
+more dangerously, when a candidate is accidentally accepted
+(because the linearised cost happens to look better) the true
+CR3BP propagation perturbs the orbit further. With the gate, the
+spacecraft drifts naturally between perilune passages and QUBO
+firings concentrate where they are physically effective.
+
+% ------------------------------------------------------------------
+\subsection{Connection to primer-vector theory}\label{sec:primer-vector-manual}
+% ------------------------------------------------------------------
+
+The on/off scheduling QUBO never computes a Pontryagin costate ---
+the decision variables are the binary controls themselves, not the
+adjoint. Once a schedule has converged under the iterative driver,
+however, a costate can be reconstructed \emph{a posteriori} along
+the resulting nonlinear trajectory by integrating
+$\dot{\bvec{\lambda}} = -A(\xvec(t))^\top \bvec{\lambda}$
+backward in time from the terminal transversality condition
+$\bvec{\lambda}(t_f) = 2\bvec{W}(\xvec_f - \xvec_\mathrm{target})$.
+The tangential primer-vector analogue is the scalar switching
+function
+\begin{equation}\label{eq:switching-manual}
+  S(t) = -\bvec{\lambda}_v(t) \cdot \hat{\bvec{v}}(t),
+\end{equation}
+where $\bvec{\lambda}_v$ is the velocity sub-vector of the costate
+and $\hat{\bvec{v}}$ the unit velocity vector. Pontryagin's minimum
+principle predicts that the optimal tangential bang-bang control
+fires the engine when $S > 0$ and coasts otherwise. Comparing this
+continuous-time prediction with the QUBO's discrete schedule
+provides a sanity check on the bridge between the binary
+formulation and indirect primer-vector
+methods~\cite{Taylor2026}. The implementation is in
+\texttt{qalunar/reference/primer\_vector.py} and the figure is
+produced by \texttt{scripts/run\_primer\_vector\_figure.py}.
+
+Applied to the converged iterative schedule of
+Section~\ref{sec:lin-gap} ($T = 4$ nondim, $N = 15$, three ON
+slots out of fifteen), the reconstruction yields a switching
+function whose support is a contiguous interval near the second
+half of the arc. Three observations stand out:
+\begin{enumerate}[leftmargin=1.5em]
+  \item Every QUBO ON-slot has its slot centre inside the
+    PMP-predicted ON region ($S(t_i) > 0$, $3/3$); the converse
+    pathology --- a QUBO burn placed where PMP predicts coast ---
+    does not occur.
+  \item The QUBO does not saturate the $S > 0$ interval as a
+    continuous PMP would in the unconstrained case: nine of the
+    fifteen slot centres lie in the $S > 0$ region but only three
+    are activated. With no fuel penalty, continuous PMP would fire
+    the engine across the entire $S > 0$ interval; the binary
+    QUBO instead selects a minimal subset of those slots
+    sufficient to land the target within tolerance, because the
+    squared-norm objective is minimised by the smallest set of
+    impulse-response vectors $\bvec{b}_i$ whose sum cancels the
+    gap $\bvec{d}_\mathrm{eff}$, not by activating every slot
+    whose individual contribution would align with
+    $-\bvec{d}_\mathrm{eff}$.
+  \item The costate exhibits strong backward amplification near
+    $t_0$, a direct manifestation of CR3BP sensitivity to the
+    initial state: small perturbations early in the arc compound
+    through the chaotic flow and produce large terminal-state
+    changes, which is exactly the regime where the linearisation
+    gap is widest --- and exactly why the iterative loop is
+    required to make the QUBO faithful in the first place.
+\end{enumerate}
+
+This reconstruction is a self-consistency check:
+$\bvec{\lambda}$ is built from the QUBO's own final state and
+propagated through the QUBO's own trajectory. A fully external
+comparison would solve the same problem via indirect methods (the
+route taken in~\cite{Taylor2026} via homotopy continuation in
+$\rho$ and $u_\mathrm{max}$) and overlay the two switching
+functions. We leave that comparison to future work, as the
+in-house direct-collocation NLP referenced earlier is
+energy-optimal rather than fuel-optimal and therefore lacks a
+directly comparable primer vector.
+
+% ------------------------------------------------------------------
+\subsection{Comparison with state-of-the-art Earth--Moon transfers}\label{sec:purdue-comparison}
+% ------------------------------------------------------------------
+
+Recent work by Taylor et~al.~\cite{Taylor2026} from the Purdue
+Orbital student team designs Earth-to-NRHO and Earth-to-LLO
+transfers via Pontryagin's minimum principle and primer-vector
+theory, with hyperbolic-tangent smoothing and homotopy continuation
+in $\rho$ and $u_\mathrm{max}$ to converge on the impulsive limit.
+Their reported totals are \SI{3.93}{\km\per\second} in
+\SI{5.2}{\day} for LEO\,$\to$\,NRHO and \SI{3.91}{\km\per\second}
+in \SI{4.7}{\day} for LEO\,$\to$\,LLO. Table~\ref{tab:purdue-manual}
+places those numbers next to the qalunar end-to-end binary-QUBO
+result.
+
+\begin{table}[htbp]
+\centering
+\caption{End-to-end Earth--Moon transfer comparison. The
+\emph{method} column lists the principal optimisation framework;
+totals are not directly comparable due to differences in starting
+orbit, propulsion system and final orbit (see text).}
+\label{tab:purdue-manual}
+\begin{tabular}{llrrl}
+\toprule
+Source & Transfer & $\Delta v$ (km/s) & TOF (d) & Method \\
+\midrule
+This work
+  & GEO\,$\to$\,bound lunar orbit
+  & \num{2.50} & \num{31.8}
+  & binary QUBO, low-thrust ion/Hall \\
+\cite{Taylor2026}
+  & LEO\,$\to$\,9{:}2 NRHO
+  & \num{3.93} & \num{5.2}
+  & PMP + primer vector, impulsive chemical \\
+\cite{Taylor2026}
+  & LEO\,$\to$\,LLO (\SI{100}{\km})
+  & \num{3.91} & \num{4.7}
+  & PMP + primer vector, impulsive chemical \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The comparison is not apples-to-apples in three respects:
+(i)~the starting orbit differs (GEO vs.\ LEO --- a
+$\sim\SI{3.9}{\km\per\second}$ Hohmann gap that favours qalunar);
+(ii)~the propulsion system differs (low-thrust electric vs.\
+impulsive chemical --- low thrust buys $\Delta v$ efficiency at
+the cost of TOF); and (iii)~the final orbit differs (qalunar
+reaches a near-circular bound orbit at the perilune radius rather
+than \SI{100}{\km} LLO or the 9{:}2 NRHO). Subject to those
+caveats, the qualitative conclusion is that the binary-QUBO
+formulation produces a $\Delta v$ budget consistent with the
+indirect-method state of the art at the cost of an order of
+magnitude longer TOF --- the expected low-thrust trade-off. The
+methodological novelty is not a $\Delta v$ improvement but the
+demonstration that an entire Earth--Moon mission can be flown by
+binary on/off commands of a single throttleable thruster, with
+the QUBO scheduler and its sliding-window extension as the
+discrete-side analogue of the indirect primer-vector switching
+function~\cite{Taylor2026}.
+
+
+% ==================================================================
+\section{Discussion: why the project changed direction}\label{sec:discussion-pivot}
+% ==================================================================
+
+The original project plan, following Carbone et~al.~\cite{Carbone2025},
+aimed to extend the QUBO-encoded continuous least-squares approach
+from the two-body HCW setting to the nonlinear CR3BP.
+The investigation described in
+Section~\ref{sec:convergence-investigation} revealed a fundamental
+mismatch between the tool (binary optimization) and the problem
+(continuous optimization):
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Classical methods solve the inner problem exactly.}
+    Least squares finds the continuous minimum in $\sim 5$~ms.
+    The QUBO \emph{approximates} the same answer with quantization
+    error, in far more time.
+
+  \item \textbf{Quantization error is a hard floor.}
+    With $p$~bits per variable, the best the QUBO can achieve
+    differs from the true lstsq solution by $O(2^{-p})$ per
+    component.  This error propagates through the sequential
+    linearization and prevents convergence below a
+    quantization-dominated residual plateau.
+
+  \item \textbf{There is no asymptotic advantage.}
+    Increasing $p$ shrinks the error but linearly increases the
+    number of qubits.  The QUBO is always solving a harder version
+    of a problem that classical methods solve trivially.
+\end{enumerate}
+
+The pivot to on/off thrust scheduling resolves all three issues.
+The decision variables $q_i \in \{0,1\}$ are \emph{inherently binary}:
+there is no encoding, no quantization, no approximation beyond the
+standard STM linearization.  The $2^N$ search space is genuinely hard
+for classical exhaustive methods, and quantum annealing is designed
+precisely for this class of combinatorial optimization.
+
+The previous work (TFC+ELM transcription, lstsq-to-QUBO pipeline,
+sequential linearization) remains valuable as a reference
+implementation and a documented negative result: it shows where QUBO
+encoding of continuous problems breaks down and why naturally binary
+formulations are the scientifically sound path forward.
+
+
+% ==================================================================
+\section{Glossary of symbols}
+% ==================================================================
+
+\begin{center}
+\begin{tabular}{llp{7cm}}
+  \toprule
+  Symbol & Meaning & Notes \\
+  \midrule
+  $\mu$ & CR3BP mass parameter & $m_2/(m_1+m_2)$; Earth--Moon $\approx 0.01215$ \\
+  $r_1, r_2$ & Distances to primaries & $r_1$ from Earth, $r_2$ from Moon \\
+  $\Omega$ & Pseudo-potential & Centrifugal $+$ gravitational + bookkeeping \\
+  $\Omega_x, \Omega_y$ & Gradient of $\Omega$ & Drives position dynamics \\
+  $\Omegaxx, \Omegaxy, \Omegayy$ & Hessian of $\Omega$ & Time-varying along nominal \\
+  $C_J$ & Jacobi integral & $2\Omega - \|\bvec{v}\|^2$ \\
+  $(L_1, \dots, L_5)$ & Lagrange points & $L_4, L_5$ stable for Earth--Moon \\
+  \midrule
+  $\bvec{r}, \bvec{v}$ & State position and velocity & $\bvec{r}=(x,y)$, $\bvec{v}=(v_x,v_y)$ \\
+  $\uvec$ & Thrust acceleration control & $(u_x, u_y)$ \\
+  $\lamr, \lamv$ & Costates & $\lamr$ conjugate to $\bvec r$, $\lamv$ to $\bvec v$ \\
+  $\mathcal H$ & Control Hamiltonian & $u^\star = -\lamv$ \\
+  $T$ & Time of flight & Fixed \\
+  $(\bvec r_0, \bvec v_0)$ & Initial BC & LEO state \\
+  $(\bvec r_f, \bvec v_f)$ & Final BC & LLO state \\
+  \midrule
+  $z \in [-1, 1]$ & Normalized time & $z = c(t - t_0) - 1$, $c = 2/T$ \\
+  $\omega_1, \dots, \omega_4$ & Hermite switching functions & TFC BC-annihilators \\
+  $\Hmat$ & ELM basis matrix & $n \times L$, $H_{ij} = \tanh(w_j z_i + b_j)$ \\
+  $\Fmat$ & Constrained expression matrix & ELM minus switching-projections \\
+  $n$ & Training points per coordinate & Typical $40$ \\
+  $L$ & ELM neurons per coordinate & Typical $20$--$80$ \\
+  $\bm\xi$ & ELM output weights & Free parameters \\
+  \midrule
+  $\Amat, \Bmat$ & Linear residual system & Shape $6n \times 6L$ and $6n$ \\
+  $\lambda_{\mathrm{tik}}$ & Tikhonov strength & $\varepsilon_{\mathrm{tik}} \sigma_{\max}(\Amat)^2$ \\
+  $r$ & Effective rank after SVD truncation & Much smaller than $6L$ in practice \\
+  $\Vr$ & Right basis of truncated SVD & $6L \times r$ \\
+  $\bm\alpha$ & Reduced coordinates & $\bm\xi = \Vr \bm\alpha$ \\
+  $p$ & Bits per reduced variable & Typical $8$ \\
+  $\bvec q \in \{0,1\}^{rp}$ & QUBO bitstring & Physical qubits (lstsq encoding) \\
+  $\Qmat, \bvec\ell, c$ & QUBO triple & $E(\bvec q)=\bvec q^\top \Qmat \bvec q + \bvec\ell^\top \bvec q + c$ \\
+  \midrule
+  $q_i \in \{0,1\}$ & Thrust on/off decision & $q_i=1$: burn at step $i$ \\
+  $N$ & Number of decision steps & $= $ number of qubits (scheduling) \\
+  $\Phi(t_i, t_f)$ & State transition matrix & Maps perturbation at $t_i$ to $t_f$ \\
+  $\bvec B_{\mathrm{ctrl}}$ & Control influence matrix & $(4\times 2)$, maps thrust to state derivative \\
+  $\bvec b_i$ & Impulse response vector & $\Phi(t_i,t_f)\bvec B_{\mathrm{ctrl}} \uvec_i \Delta t$ \\
+  $\bvec d$ & Target state gap & $\xvec_{\mathrm{target}} - \xvec_{\mathrm{coast}}(t_f)$ \\
+  $\alpha$ & Fuel penalty weight & Trades miss distance vs.\ number of burns \\
+  $\bvec W$ & Target weighting matrix & $\mathrm{diag}(w_1,w_2,w_3,w_4)$; default $\bvec I$ \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+
+% ==================================================================
+\section*{Bibliography}
+% ==================================================================
+\begin{thebibliography}{9}
+
+  \bibitem{Carbone2025}
+  De Grossi, F., Carbone, A., Spiller, D., Ottaviani, D.,
+  Mengoni, R., Circi, C.,
+  \emph{Transcription and optimization of an interplanetary trajectory through quantum annealing},
+  Astrodynamics \textbf{9}:195--215, 2025.
+
+  \bibitem{Szebehely1967}
+  Szebehely, V., \emph{Theory of Orbits: The Restricted Problem of
+   Three Bodies}, Academic Press, 1967.
+
+  \bibitem{KLMR2011}
+  Koon, W., Lo, M., Marsden, J., Ross, S., \emph{Dynamical Systems,
+   the Three-Body Problem and Space Mission Design}, 2011.
+
+  \bibitem{Mortari2017}
+  Mortari, D., \emph{The Theory of Connections: Connecting Points},
+  Mathematics \textbf{5}(4):57, 2017.
+
+  \bibitem{Huang2006}
+  Huang, G.-B., Zhu, Q.-Y., Siew, C.-K.,
+  \emph{Extreme learning machine: Theory and applications},
+  Neurocomputing \textbf{70}:489--501, 2006.
+
+  \bibitem{Kelly2017}
+  Kelly, M.,
+  \emph{An Introduction to Trajectory Optimization: How to Do Your
+   Own Direct Collocation},
+  SIAM Review \textbf{59}(4):849--904, 2017.
+
+  \bibitem{Betts2010}
+  Betts, J.~T.,
+  \emph{Practical Methods for Optimal Control and Estimation Using
+   Nonlinear Programming}, 2nd~ed., SIAM, 2010.
+
+  \bibitem{Conn2000}
+  Conn, A.~R., Gould, N.~I.~M., Toint, P.~L.,
+  \emph{Trust-Region Methods},
+  MPS-SIAM Series on Optimization, SIAM, 2000.
+
+  \bibitem{Taylor2026}
+  Taylor, T.~E., Madden, K.~F., Bohne, S.~L., Vetter, M.~J.,
+  \emph{An Earth--Moon Trajectory and Mission Design},
+  Purdue Orbital, Purdue University, West Lafayette, IN, 2026.
+
+\end{thebibliography}
+
+\end{document}

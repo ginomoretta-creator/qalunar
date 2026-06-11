@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qalunar"
+version = "0.1.0"
+description = "Quantum annealing for Earth-Moon trajectory optimization"
+readme = {text = "Research project by Gino L. Moretta (Sapienza Rome, supervisor Prof. A. Paolozzi), extending the pseudospectral QUBO transcription framework of De Grossi / Carbone et al. (Astrodynamics 9:195-215, 2025) from Earth-Mars to Earth-Moon low-thrust transfers on D-Wave Advantage 2.", content-type = "text/plain"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Gino Luciano Moretta"},
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "dimod>=0.12",
+    "dwave-neal>=0.6",
+    "dwave-system>=1.21",
+    "dwave-preprocessing>=0.6",
+    "minorminer>=0.2",
+    "dwave-networkx>=0.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qalunar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["."]
