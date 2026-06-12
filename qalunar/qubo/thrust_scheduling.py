@@ -307,6 +307,7 @@ def build_thrust_scheduling_qubo(
     config: ThrustSchedulingConfig | None = None,
     n_integration_substeps: int = 50,
     nominal_schedule: NDArray[np.int64] | None = None,
+    nominal_final_override: NDArray[np.float64] | None = None,
 ) -> ThrustSchedulingQubo:
     """Build the on/off scheduling QUBO.
 
@@ -336,6 +337,17 @@ def build_thrust_scheduling_qubo(
         are computed along that thrust-applied trajectory.  This is the
         building block of the iterative re-linearization loop in
         :func:`solve_iterative`.
+    nominal_final_override : (4,) ndarray, optional
+        Truth anchor for the effective target gap.  ``None`` (default)
+        uses the final state of the internal CR3BP propagation of the
+        nominal schedule.  When a higher-fidelity truth oracle drives
+        the outer loop (e.g. the GMAT oracle in
+        :mod:`qalunar.highfidelity`), pass the *oracle's* final state of
+        the nominal schedule here: the impulse-response sensitivities
+        ``b_j`` remain the cheap CR3BP ones, but the gap the QUBO is
+        asked to close becomes the true model gap — the offset-free-MPC
+        correction that lets the binary loop converge under model
+        mismatch instead of re-proposing the CR3BP optimum forever.
 
     Returns
     -------
@@ -437,7 +449,10 @@ def build_thrust_scheduling_qubo(
     # Then  || x(tf) - target ||_W²  =  || c + Σ_j q_j b_j ||_W²
     #                                =  || Σ_j q_j b_j - d_eff ||_W²
     # with d_eff = -c = (target - x_nom(tf)) + Σ_j q_nom_j b_j.
-    nominal_final = states_full[-1]
+    if nominal_final_override is not None:
+        nominal_final = np.asarray(nominal_final_override, dtype=np.float64)
+    else:
+        nominal_final = states_full[-1]
     d_eff = (target_state - nominal_final) + b_vectors.T @ q_nom.astype(np.float64)
 
     # 4. Quadratic form.
@@ -613,6 +628,7 @@ def solve_iterative(
     tol: float = 1e-9,
     initial_schedule: NDArray[np.int64] | None = None,
     accept_only_improvement: bool = True,
+    truth_propagator: "callable | None" = None,  # type: ignore[valid-type]
     verbose: bool = False,
 ) -> IterativeSchedulingResult:
     """Solve the scheduling problem with sequential re-linearization.
@@ -636,6 +652,17 @@ def solve_iterative(
     tol : float
         Stop when ``||true_miss||`` improvement between iterations falls
         below this threshold.
+    truth_propagator : callable, optional
+        Replacement truth oracle with signature
+        ``truth_propagator(state0, t_span, schedule, config) ->
+        final_state``. ``None`` (default) uses the in-house CR3BP RK4
+        (:func:`propagate_schedule`). Pass
+        :func:`qalunar.highfidelity.make_gmat_truth_propagator` to make
+        the trust-region accept/reject decisions against NASA GMAT
+        ephemeris dynamics. The QUBO linearization itself stays in the
+        CR3BP; only the candidate evaluation changes, so the
+        monotone-acceptance guarantee is preserved with respect to the
+        supplied oracle.
     """
     cfg = config if config is not None else ThrustSchedulingConfig()
     channels = _channels_from_config(cfg)
@@ -667,10 +694,13 @@ def solve_iterative(
     _w_sqrt = np.sqrt(_w_diag)
 
     def _truth_miss(qq: NDArray[np.int64]) -> tuple[NDArray[np.float64], float]:
-        x_f = propagate_schedule(
-            dynamics, state0, t_span, qq, cfg,
-            n_integration_substeps=n_truth_substeps,
-        )
+        if truth_propagator is not None:
+            x_f = truth_propagator(state0, t_span, qq, cfg)
+        else:
+            x_f = propagate_schedule(
+                dynamics, state0, t_span, qq, cfg,
+                n_integration_substeps=n_truth_substeps,
+            )
         miss = x_f - target
         return miss, float(np.linalg.norm(_w_sqrt * miss))
 
@@ -682,6 +712,16 @@ def solve_iterative(
     reason = "max_iters reached"
     last_qubo: ThrustSchedulingQubo | None = None
 
+    # With an external truth oracle, anchor the QUBO's effective gap at
+    # the oracle's final state of the incumbent schedule (already
+    # evaluated — no extra oracle calls). Without it the CR3BP-built
+    # QUBO would keep re-proposing the CR3BP optimum regardless of what
+    # the oracle reports, and the loop would fixed-point immediately.
+    def _truth_anchor() -> NDArray[np.float64] | None:
+        if truth_propagator is None:
+            return None
+        return incumbent_miss + target
+
     for it in range(max_iters):
         qubo = build_thrust_scheduling_qubo(
             dynamics, state0, target, t_span,
@@ -689,6 +729,7 @@ def solve_iterative(
             config=cfg,
             n_integration_substeps=n_integration_substeps,
             nominal_schedule=q,
+            nominal_final_override=_truth_anchor(),
         )
         last_qubo = qubo
         q_cand = np.asarray(sampler(qubo), dtype=np.int64)
@@ -737,6 +778,7 @@ def solve_iterative(
             config=cfg,
             n_integration_substeps=n_integration_substeps,
             nominal_schedule=q,
+            nominal_final_override=_truth_anchor(),
         )
 
     assert last_qubo is not None
