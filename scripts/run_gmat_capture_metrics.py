@@ -77,11 +77,11 @@ SCHEDULES = {
 
 
 def _sat_blocks(name: str, state_rot: np.ndarray, has_burns: bool,
-                thrust_n: float) -> list[str]:
+                thrust_n: float, epoch: str = EPOCH) -> list[str]:
     lines = [
         f"Create Spacecraft {name};",
         f"{name}.DateFormat = UTCGregorian;",
-        f"{name}.Epoch = '{EPOCH}';",
+        f"{name}.Epoch = '{epoch}';",
         f"{name}.CoordinateSystem = EarthMoonRot;",
         f"{name}.DisplayStateType = Cartesian;",
         f"{name}.X = {state_rot[0]:.12f};",

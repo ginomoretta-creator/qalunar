@@ -83,6 +83,7 @@ __all__ = [
     "GmatOracleConfig",
     "build_gmat_linearized_qubo",
     "build_schedule_script",
+    "epoch_plus_seconds",
     "find_gmat_console",
     "make_gmat_truth_propagator",
     "propagate_schedule_gmat",
@@ -113,6 +114,37 @@ def find_gmat_console() -> Path:
     if env:
         return Path(env)
     return _DEFAULT_GMAT_CONSOLE
+
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def epoch_plus_seconds(epoch_utc: str, seconds: float) -> str:
+    """Advance a GMAT UTCGregorian epoch string by ``seconds``.
+
+    Locale-independent (GMAT month abbreviations are fixed English).
+    Sub-millisecond remainders are rounded to the millisecond GMAT
+    accepts. Used by receding-horizon drivers to anchor each window's
+    oracle at the correct absolute time.
+    """
+    from datetime import datetime, timedelta
+
+    day_s, mon_s, year_s, hms = epoch_utc.strip().split()
+    h, m, s = hms.split(":")
+    sec, _, frac = s.partition(".")
+    base = datetime(
+        int(year_s), _MONTHS.index(mon_s) + 1, int(day_s),
+        int(h), int(m), int(sec),
+        int((frac or "0").ljust(6, "0")[:6]),
+    )
+    t = base + timedelta(seconds=float(seconds))
+    ms = round(t.microsecond / 1000.0)
+    if ms == 1000:
+        t = t + timedelta(seconds=1)
+        ms = 0
+    return (f"{t.day:02d} {_MONTHS[t.month - 1]} {t.year} "
+            f"{t.hour:02d}:{t.minute:02d}:{t.second:02d}.{ms:03d}")
 
 
 @dataclass(frozen=True)

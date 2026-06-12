@@ -1,14 +1,24 @@
-"""Generate a GMAT GUI visualisation of the GMAT-in-the-loop result.
+"""Generate a GMAT GUI visualisation of the GMAT-designed lunar approach.
 
-Recomputes the two schedules of ``run_gmat_oracle_demo`` (both are
-deterministic) and writes a single GMAT script that flies four
-spacecraft through the Phase-2 arc with an OrbitView in the Earth-Moon
-rotating frame:
+Writes a single GMAT script that flies four spacecraft through the
+Phase-2 arc of the recalibrated capture scenario
+(``run_gmat_capture_design``) with two OrbitViews — the full cislunar
+picture in the Earth-Moon rotating frame, and a Moon-centred close-up
+of the SOI entry and perilune passage:
 
-* ``SatCoast``  (gray)  - uncorrected injection, no burns
-* ``RefSat``    (blue)  - perfectly-injected rendezvous reference
-* ``SatCR3BP``  (red)   - the CR3BP-designed 3-burn schedule (open loop)
-* ``SatQUBO``   (green) - the GMAT-linearised QUBO schedule
+* ``SatCoast``  (gray)  - uncorrected injection (1.187), never reaches
+                          the SOI
+* ``RefSat``    (blue)  - the GMAT-recalibrated reference (ratio
+                          1.200625), perilune ~3,900 km altitude
+* ``SatCR3BP``  (red)   - the old CR3BP-calibrated design: misses the
+                          Moon under real ephemerides
+* ``SatQUBO``   (green) - the GMAT-linearised QUBO 14-burn schedule:
+                          enters the SOI and reaches ~4,000 km perilune
+
+The schedules are the deterministic outputs of
+``run_gmat_capture_design.py`` (QUBO) and ``run_gmat_oracle_viz``'s
+earlier CR3BP solve; re-run those scripts to regenerate them if the
+scenario changes.
 
 Open the generated script in the GMAT GUI (File > Open Script > Run),
 or launch it directly:
@@ -20,17 +30,12 @@ Run:  python -m scripts.run_gmat_oracle_viz
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import numpy as np
 
-from qalunar.dynamics import PlanarCR3BP
 from qalunar.dynamics.cr3bp import EARTH_MOON_MU
-from qalunar.highfidelity import GmatOracleConfig, propagate_schedule_gmat, solve_gmat_iterative
 from qalunar.highfidelity.gmat_oracle import synodic_to_rotating_km
-from qalunar.qubo.scheduling_samplers import sample_brute_force
-from qalunar.qubo.thrust_scheduling import ThrustSchedulingConfig, solve_iterative
 from qalunar.reference.edelbaum import ACCELERATION_M_S2, LENGTH_KM, TIME_S
 
 
@@ -42,11 +47,16 @@ _R_SYN = np.array([-_MU + _R_HEO, 0.0])
 _OMEGA_CROSS_R = np.array([-_R_SYN[1], _R_SYN[0]])
 
 V_RATIO = 1.187
-V_RATIO_PERFECT = 1.190
+# GMAT-recalibrated reference injection (run_gmat_capture_design.py).
+V_RATIO_PERFECT = 1.200625
 THRUST_MAG = 0.02
 T_SPAN = (0.0, 4.0)
 N_STEPS = 15
 EPOCH = "08 Jan 2026 00:00:00.000"
+
+# Deterministic schedule outputs (provenance in the module docstring).
+Q_CR3BP = np.array([int(b) for b in "001001100000000"], dtype=np.int64)
+Q_QUBO = np.array([int(b) for b in "111111111111110"], dtype=np.int64)
 
 SATS = [
     # (name, color, uses burn hardware)
@@ -55,10 +65,6 @@ SATS = [
     ("SatCR3BP", "Red", True),
     ("SatQUBO", "Green", True),
 ]
-
-
-def _bf_sampler(qubo) -> np.ndarray:
-    return sample_brute_force(qubo).schedule
 
 
 def _sat_definition(name: str, color: str, state_rot: np.ndarray,
@@ -214,6 +220,22 @@ def build_viz_script(
         "RotatingView.Axes = On;",
         "RotatingView.XYPlane = On;",
         "",
+        "Create OrbitView MoonCloseUp;",
+        "MoonCloseUp.SolverIterations = Current;",
+        "MoonCloseUp.UpperLeft = [0.55 0.55];",
+        "MoonCloseUp.Size = [0.43 0.40];",
+        "MoonCloseUp.Add = {SatCoast, RefSat, SatCR3BP, SatQUBO, Luna};",
+        "MoonCloseUp.CoordinateSystem = EarthMoonRot;",
+        "MoonCloseUp.DrawObject = [true true true true true];",
+        "MoonCloseUp.ViewPointReference = Luna;",
+        "MoonCloseUp.ViewPointVector = [0 0 80000];",
+        "MoonCloseUp.ViewDirection = Luna;",
+        "MoonCloseUp.ViewScaleFactor = 1;",
+        "MoonCloseUp.ViewUpCoordinateSystem = EarthMoonRot;",
+        "MoonCloseUp.ViewUpAxis = Y;",
+        "MoonCloseUp.Axes = On;",
+        "MoonCloseUp.XYPlane = Off;",
+        "",
         "Create ReportFile Rep;",
         "Rep.Filename = 'gmat_oracle_viz_final_states.txt';",
         "Rep.Precision = 12;",
@@ -241,50 +263,18 @@ def build_viz_script(
 
 
 def main() -> None:
-    dyn = PlanarCR3BP(mu=_MU)
-    sched_cfg = ThrustSchedulingConfig(
-        thrust_magnitude=THRUST_MAG, thrust_direction="tangential",
-    )
-    oracle_cfg = GmatOracleConfig()
-
     state_ref = np.concatenate([
         _R_SYN, np.array([0.0, _V_CIRC * V_RATIO_PERFECT]) - _OMEGA_CROSS_R,
     ])
     state0 = np.concatenate([
         _R_SYN, np.array([0.0, _V_CIRC * V_RATIO]) - _OMEGA_CROSS_R,
     ])
-    coast = np.zeros(N_STEPS, dtype=np.int64)
 
-    _, traj_perfect = dyn.propagate(state_ref, T_SPAN, n_steps=8000)
-    target_cr3bp = traj_perfect[-1]
-    target_gmat = propagate_schedule_gmat(
-        state_ref, T_SPAN, coast, sched_cfg, oracle_cfg,
-    )
-
-    print("[1/3] recomputing CR3BP design schedule ...")
-    t0 = time.perf_counter()
-    res_cr3bp = solve_iterative(
-        dyn, state0, target_cr3bp, T_SPAN, n_decision_steps=N_STEPS,
-        sampler=_bf_sampler, config=sched_cfg, max_iters=8,
-        n_integration_substeps=80, n_truth_substeps=300,
-    )
-    print(f"      schedule {''.join(map(str, res_cr3bp.schedule))} "
-          f"({time.perf_counter() - t0:.1f} s)")
-
-    print("[2/3] recomputing GMAT-linearised schedule ...")
-    t0 = time.perf_counter()
-    res_qubo = solve_gmat_iterative(
-        state0, target_gmat, T_SPAN, n_decision_steps=N_STEPS,
-        sampler=_bf_sampler, sched_config=sched_cfg,
-        oracle_config=oracle_cfg, max_iters=8,
-    )
-    print(f"      schedule {''.join(map(str, res_qubo.schedule))} "
-          f"({time.perf_counter() - t0:.1f} s)")
-
-    print("[3/3] writing GMAT visualisation script ...")
-    script = build_viz_script(
-        state0, state_ref, res_cr3bp.schedule, res_qubo.schedule,
-    )
+    print("writing GMAT visualisation script "
+          f"(reference ratio {V_RATIO_PERFECT}) ...")
+    print(f"  CR3BP design : {''.join(map(str, Q_CR3BP))}")
+    print(f"  GMAT QUBO    : {''.join(map(str, Q_QUBO))}")
+    script = build_viz_script(state0, state_ref, Q_CR3BP, Q_QUBO)
     out = Path(__file__).resolve().parent / "figures" / "gmat_oracle_viz.script"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(script, encoding="ascii")

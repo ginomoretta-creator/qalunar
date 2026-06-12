@@ -16,6 +16,7 @@ from qalunar.highfidelity.gmat_oracle import (
     GmatOracleConfig,
     _schedule_segments,
     build_schedule_script,
+    epoch_plus_seconds,
     find_gmat_console,
     propagate_schedule_gmat,
     rotating_km_to_synodic,
@@ -49,6 +50,26 @@ class TestFrameBridge:
         rot = synodic_to_rotating_km(moon_synodic)
         assert rot[0] == pytest.approx(LENGTH_KM)
         assert rot[1] == 0.0
+
+
+class TestEpochArithmetic:
+    def test_zero_offset_is_identity(self):
+        e = "08 Jan 2026 00:00:00.000"
+        assert epoch_plus_seconds(e, 0.0) == e
+
+    def test_day_and_fraction(self):
+        assert (epoch_plus_seconds("08 Jan 2026 00:00:00.000", 86_400.5)
+                == "09 Jan 2026 00:00:00.500")
+
+    def test_month_and_year_rollover(self):
+        assert (epoch_plus_seconds("31 Dec 2026 23:59:59.999", 0.0015)
+                == "01 Jan 2027 00:00:00.000")
+
+    def test_composition(self):
+        e = "08 Jan 2026 12:34:56.789"
+        once = epoch_plus_seconds(e, 5000.0 + 7200.0)
+        twice = epoch_plus_seconds(epoch_plus_seconds(e, 5000.0), 7200.0)
+        assert once == twice
 
 
 class TestScheduleSegments:
