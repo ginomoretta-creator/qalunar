@@ -292,6 +292,17 @@ def _fly_capture(state, epoch, fuel, schedule, console, tag) -> tuple[float, flo
 
 
 def main() -> None:
+    global CAPTURE_WINDOW_DAYS, E_TARGET
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--window", type=float, default=CAPTURE_WINDOW_DAYS,
+                    help="capture window length in days")
+    ap.add_argument("--e-target", type=float, default=E_TARGET,
+                    help="target Moon-relative energy (km^2/s^2, negative)")
+    args = ap.parse_args()
+    CAPTURE_WINDOW_DAYS = args.window
+    E_TARGET = args.e_target
+
     console = find_gmat_console()
     if not console.exists():
         raise SystemExit(f"GmatConsole not found at {console}")
