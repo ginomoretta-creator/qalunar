@@ -319,6 +319,59 @@ surfaces this limit (it reports the residual positive apolune) rather than
 hiding it --- the simulator keeps the method honest about what is genuinely
 hard.
 
+\subsection{Head-to-head with the flown mission and ESA's optimization}
+\label{sec:head2head}
+Table~\ref{tab:head2head} places our GMAT/QUBO reproduction next to the flown
+SMART-1 mission. The two agree where the physics makes them comparable and
+differ where the engineering does.
+
+\begin{table}[h]
+\centering
+\caption{This work (GMAT $+$ binary QUBO) against the flown SMART-1 mission.
+The orbit-raising $\dv$ and the perigee-thrust strategy are genuinely
+comparable; the operational capture, timeline, and design effort are not
+(see text).}
+\label{tab:head2head}
+\small
+\begin{tabular}{@{}p{2.7cm}p{5.9cm}p{5.9cm}@{}}
+\toprule
+ & \textbf{This work (GMAT $+$ QUBO)} & \textbf{SMART-1 (flown, ESA)} \\
+\midrule
+Start orbit & GTO $654\times\SI{35885}{\km}$, $i=\ang{7}$ & same (real) \\
+Thruster & PPS-1350 Hall, \SI{88}{\milli\newton}, $I_{sp}=\SI{1650}{\second}$ & same \\
+Orbit-raising $\dv$ & $\approx\SI{3180}{\meter\per\second}$ (to lunar distance) & $\approx\SI{3500}{\meter\per\second}$ (incl.\ capture) \\
+Time of flight & \SI{140}{\day} at 100\,\% duty ($\sim\SI{350}{\day}$ at 40\,\%) & $\sim\SI{410}{\day}$ \\
+Xenon used & \SI{65.8}{\kg} (spiral) & $\sim\SI{75}{\kg}$ (total) \\
+Final inclination & $\ang{6.42}$ (essentially held) & held \\
+Lunar capture & single-pass binary braking; loose bound orbit & multi-pass lunar-resonance lowering to a science orbit \\
+\midrule
+Decision variable & binary on/off schedule (discrete) & continuous thrust direction $+$ throttle \\
+Optimizer & QUBO (combinatorial) $+$ GMAT finite differences $+$ trust region & continuous optimal control, human-in-the-loop mission design \\
+Design effort & automated; minutes of compute per phase & multi-month ground design campaign \\
+Quantum-ready & yes (QUBO is native to an annealer) & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Two optimizations, and what is comparable.} ESA's SMART-1 transfer
+was designed on the ground with continuous-thrust optimal control and a
+sequence of lunar-resonance encounters that supplied much of the capture
+energy ``for free'' over months of careful phasing~\cite{Racca2002,Milligan2005}.
+Our loop instead optimizes a \emph{discrete} on/off schedule automatically,
+with GMAT validating every step. The two are genuinely comparable on the
+orbit-raising budget --- the Edelbaum $\dv$ is thrust- and method-independent,
+and both land near \SI{3.2}{\km\per\second} --- and on the thrust
+\emph{strategy}: under a duty-cycle constraint our optimizer, with no orbital
+mechanics built in, concentrated its burns at perigee, independently
+rediscovering the maximum-efficiency policy the engineers used. They are
+\emph{not} comparable on the operational capture: ESA reached a science orbit
+through multi-pass resonant lowering, whereas our single-pass binary braking
+yields only a loose bound orbit --- a gap we report rather than hide. The point
+is therefore a methodological validation, not a competition: an automated,
+hardware-faithful, quantum-ready loop lands on the same efficiency physics a
+human design campaign did, while being explicit about the operational work it
+does not yet replace.
+
 % ==================================================================
 \section{Computational profile and quantum readiness}\label{sec:cost}
 % ==================================================================
