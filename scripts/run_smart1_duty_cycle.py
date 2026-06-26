@@ -28,6 +28,7 @@ Run:  python -m scripts.run_smart1_duty_cycle
 
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 import subprocess
@@ -57,6 +58,24 @@ N_SLOTS = 24
 DUTY_CYCLE = 0.40                  # SMART-1's ~40 %
 N_BURNS = round(DUTY_CYCLE * N_SLOTS)
 SA_NUM_READS = 20_000
+
+# Dark "space" palette, consistent with run_smart1_trajectory_figure.
+C_BG = "#070a12"
+C_EARTH = "#2f6fe0"
+C_EARTH_GLOW = "#8fb8ff"
+C_ORBIT = "#33d6e6"
+C_BURN = "#ff7a36"
+C_COAST = "#7b8499"
+C_FAINT = "#3a4257"
+C_TEXT = "#cdd4e0"
+
+
+def _glow(ax, x, y, color, lw=1.4, n=5, base_alpha=0.08, zorder=3):
+    """Draw a line with a soft neon glow (several fading strokes)."""
+    for k in range(n, 0, -1):
+        ax.plot(x, y, color=color, lw=lw + 2.4 * k, alpha=base_alpha,
+                solid_capstyle="round", zorder=zorder)
+    ax.plot(x, y, color=color, lw=lw, solid_capstyle="round", zorder=zorder + 1)
 
 
 def _gto() -> tuple[float, float, float]:
@@ -263,6 +282,14 @@ def _evenly_spread(n: int, k: int) -> np.ndarray:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--replot", action="store_true",
+                    help="regenerate the figure from the cached CSV (no GMAT)")
+    args = ap.parse_args()
+    if args.replot:
+        _replot()
+        return
+
     console = find_gmat_console()
     if not console.exists():
         raise SystemExit(f"GmatConsole not found at {console}")
@@ -363,52 +390,86 @@ def main() -> None:
     _plot(ta_deg, v_kms, g, q_qubo, out_csv_rows=(ta_deg, v_kms, g, q_qubo))
 
 
-def _plot(ta_deg, v_kms, g, q_qubo, out_csv_rows) -> None:
+def _draw(ta_deg, v_kms, q_qubo, sma, ecc) -> None:
+    """Single dark orbit panel: where on the GTO the QUBO chooses to fire."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    on = q_qubo.astype(bool)
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.6),
-                                   constrained_layout=True)
+    on = np.asarray(q_qubo, dtype=bool)
+    p = sma * (1.0 - ecc ** 2)
 
-    # (a) Oberth law: energy gain vs slot speed
-    ax1.scatter(v_kms[~on], g[~on] * 1e3, s=45, color="#1f77b4",
-                label="coast slot", zorder=3)
-    ax1.scatter(v_kms[on], g[on] * 1e3, s=70, color="#d62728",
-                edgecolors="black", label="QUBO fires here", zorder=4)
-    vfit = np.linspace(v_kms.min(), v_kms.max(), 50)
-    coef = np.polyfit(v_kms, g * 1e3, 1)
-    ax1.plot(vfit, np.polyval(coef, vfit), color="0.5", lw=1.2, ls="--",
-             label="linear fit (dE = v dv)")
-    ax1.set_xlabel("slot speed |v| (km/s)")
-    ax1.set_ylabel("energy gain per burn (J/kg)")
-    ax1.set_title("(a) The Oberth law, measured in GMAT")
-    ax1.legend(fontsize=8, loc="upper left")
-    ax1.grid(alpha=0.3)
+    nu = np.linspace(0.0, 2.0 * np.pi, 720)
+    r = p / (1.0 + ecc * np.cos(nu))
+    ex, ey = r * np.cos(nu) * 1e-3, r * np.sin(nu) * 1e-3        # 10^3 km
 
-    # (b) gain vs true anomaly, QUBO selection marked
-    ta_plot = ((ta_deg + 180) % 360) - 180     # -180..180, 0 = perigee
-    o = np.argsort(ta_plot)
-    ax2.plot(ta_plot[o], g[o] * 1e3, color="#1f77b4", lw=1.5, zorder=2)
-    ax2.scatter(ta_plot[on], g[on] * 1e3, s=70, color="#d62728",
-                edgecolors="black", label="QUBO fires here", zorder=4)
-    ax2.axvline(0, color="0.5", lw=1.0, ls=":", label="perigee")
-    ax2.set_xlabel("true anomaly (deg, 0 = perigee)")
-    ax2.set_ylabel("energy gain per burn (J/kg)")
-    ax2.set_title("(b) Burns cluster at perigee")
-    ax2.legend(fontsize=8, loc="upper right")
-    ax2.grid(alpha=0.3)
+    nus = np.deg2rad(np.asarray(ta_deg, dtype=float))
+    rs = p / (1.0 + ecc * np.cos(nus))
+    sx, sy = rs * np.cos(nus) * 1e-3, rs * np.sin(nus) * 1e-3
 
-    fig.suptitle("The binary QUBO rediscovers the Oberth effect on SMART-1's "
-                 "real GTO (40% duty cycle)", fontsize=12)
+    fig, ax = plt.subplots(figsize=(8.6, 6.2))
+    fig.patch.set_facecolor(C_BG)
+    ax.set_facecolor(C_BG)
+    ax.set_aspect("equal")
+
+    _glow(ax, ex, ey, C_ORBIT, lw=1.0, n=4, base_alpha=0.05, zorder=2)
+
+    # Earth at the focus
+    ax.add_patch(plt.Circle((0, 0), EARTH_RADIUS_KM * 1e-3 * 1.9,
+                            color=C_EARTH_GLOW, alpha=0.18, lw=0, zorder=4))
+    ax.add_patch(plt.Circle((0, 0), EARTH_RADIUS_KM * 1e-3, color=C_EARTH,
+                            lw=0, zorder=5))
+
+    # coast vs burn slots
+    ax.scatter(sx[~on], sy[~on], s=46, color=C_COAST, edgecolors=C_BG, lw=0.6,
+               zorder=6, label=f"coast slot ({int((~on).sum())})")
+    for xx, yy in zip(sx[on], sy[on]):
+        ax.scatter([xx], [yy], s=340, color=C_BURN, alpha=0.14, lw=0, zorder=6)
+        ax.scatter([xx], [yy], s=170, color=C_BURN, alpha=0.20, lw=0, zorder=6)
+    ax.scatter(sx[on], sy[on], s=96, color=C_BURN, edgecolors="white", lw=0.7,
+               zorder=8, label=f"QUBO fires here ({int(on.sum())})")
+
+    rp, ra = sma * (1 - ecc) * 1e-3, sma * (1 + ecc) * 1e-3
+    ax.annotate("perigee\n(fastest → max ΔE)", (rp, 0),
+                textcoords="offset points", xytext=(14, 16), color=C_TEXT,
+                fontsize=9, ha="left")
+    ax.annotate("apogee", (-ra, 0), textcoords="offset points", xytext=(8, 10),
+                color=C_TEXT, fontsize=9, ha="left", alpha=0.85)
+
+    ax.set_title("The binary QUBO fires only near perigee — it rediscovers "
+                 "the Oberth effect\nSMART-1 real GTO, 40% duty: "
+                 f"{int(on.sum())} of {on.size} equal-time slots selected",
+                 color=C_TEXT, fontsize=10.5, pad=10)
+    ax.set_xlabel("x  ($10^3$ km, perifocal — Earth at focus)")
+    ax.set_ylabel("y  ($10^3$ km)")
+    for s in ax.spines.values():
+        s.set_color(C_FAINT)
+    ax.tick_params(colors=C_TEXT, labelsize=8)
+    ax.xaxis.label.set_color(C_TEXT)
+    ax.yaxis.label.set_color(C_TEXT)
+    leg = ax.legend(loc="upper left", fontsize=9, framealpha=0.0)
+    for t in leg.get_texts():
+        t.set_color(C_TEXT)
+
+    b = sma * np.sqrt(1 - ecc ** 2) * 1e-3
+    pad = 0.10 * (ra + rp)
+    ax.set_xlim(-ra - pad, rp + 0.30 * ra + pad)
+    ax.set_ylim(-b - pad, b + pad)
+
+    fig.tight_layout(pad=1.2)
     out = Path(__file__).resolve().parent / "figures" / "smart1_duty_cycle.png"
     out.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out, dpi=180, bbox_inches="tight")
+    fig.savefig(out, dpi=200, facecolor=C_BG, bbox_inches="tight")
     print(f"  figure written to {out}")
 
+
+def _plot(ta_deg, v_kms, g, q_qubo, out_csv_rows) -> None:
+    sma, ecc, _ = _gto()
+    _draw(ta_deg, v_kms, q_qubo, sma, ecc)
+
     ta, v, gg, q = out_csv_rows
-    csv_out = out.with_suffix(".csv")
+    csv_out = (Path(__file__).resolve().parent / "figures"
+               / "smart1_duty_cycle.csv")
     with csv_out.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["slot", "true_anomaly_deg", "speed_kms",
@@ -417,6 +478,25 @@ def _plot(ta_deg, v_kms, g, q_qubo, out_csv_rows) -> None:
             w.writerow([i, f"{ta[i]:.3f}", f"{v[i]:.6f}",
                         f"{gg[i]*1e3:.4f}", int(q[i])])
     print(f"  table written to {csv_out}")
+
+
+def _replot() -> None:
+    """Regenerate the figure from the cached CSV, without touching GMAT."""
+    csv_in = (Path(__file__).resolve().parent / "figures"
+              / "smart1_duty_cycle.csv")
+    if not csv_in.exists():
+        raise SystemExit(f"{csv_in} not found; run once without --replot first.")
+    ta, v, q = [], [], []
+    with csv_in.open(newline="", encoding="utf-8") as fh:
+        rd = csv.reader(fh)
+        next(rd, None)
+        for row in rd:
+            if row:
+                ta.append(float(row[1]))
+                v.append(float(row[2]))
+                q.append(int(row[4]))
+    sma, ecc, _ = _gto()
+    _draw(np.asarray(ta), np.asarray(v), np.asarray(q), sma, ecc)
 
 
 if __name__ == "__main__":

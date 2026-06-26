@@ -244,6 +244,21 @@ $654\times\SI{35885}{\km}$ altitude, $i=\ang{7}$; Hall thruster
 \SI{82}{\kg} xenon. Everything below runs in GMAT R2025a under real
 ephemerides (Earth $4\times4$, Moon, Sun).
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{smart1_trajectory.png}
+\caption{The full SMART-1-class mission reproduced in GMAT as a \emph{single
+continuous trajectory} (real DE405 ephemerides, from the published GTO).
+\emph{(a)} Earth-centred inertial view: continuous Hall thrust raises the
+apogee from GTO out to lunar distance (dashed ring $=$ the Moon's orbit),
+delivering the spacecraft to the lunar encounter after \SI{140}{\day} at
+100\,\% duty. \emph{(b)} Moon-centred view: the binary-QUBO anti-tangential
+schedule brakes the near-parabolic arrival inside the lunar sphere of
+influence (dashed) into a bound orbit. One uninterrupted propagation --- no
+phase seam between spiral and capture.}
+\label{fig:trajectory}
+\end{figure}
+
 \subsection{Phase 1 --- the orbit-raising spiral}
 Continuous tangential thrust raises the apogee from GTO to lunar distance in
 \SI{140}{\day} at 100\,\% duty, costing $\dv\approx\SI{3180}{\meter\per\second}$
@@ -252,17 +267,9 @@ and \SI{65.8}{\kg} of xenon, with the inclination essentially held
 $\approx\SI{3500}{\meter\per\second}$ over $\sim\SI{410}{\day}$ (including
 capture) at $\sim40\,\%$ duty; at that duty our \SI{140}{\day} becomes
 $\sim\SI{350}{\day}$. The agreement is the physics check: the orbit-raising
-$\dv$ is the (thrust-independent) Edelbaum invariant
-(Fig.~\ref{fig:spiral})~\cite{Edelbaum1961}.
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\textwidth]{smart1_gmat_spiral.png}
-\caption{SMART-1 orbit-raising spiral reproduced in GMAT from the real GTO.
-\emph{Left:} apogee/perigee/SMA climbing toward lunar distance. \emph{Right:}
-xenon expended (linear), with the flown total marked.}
-\label{fig:spiral}
-\end{figure}
+$\dv$ is the (thrust-independent) Edelbaum invariant~\cite{Edelbaum1961};
+the apogee-raising spiral it produces is the trajectory of
+Fig.~\ref{fig:trajectory}a.
 
 \subsection{The optimizer rediscovers the Oberth effect}
 SMART-1 could fire only $\sim40\,\%$ of each orbit (power, eclipse, thermal
@@ -282,10 +289,14 @@ exact ground state at $N=24$, motivating exact or quantum solvers.)
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\textwidth]{smart1_duty_cycle.png}
-\caption{Under a 40\,\% duty constraint the binary optimizer rediscovers
-Oberth. \emph{(a)} measured energy gain per burn is linear in slot speed
-($\mathrm dE=v\,\mathrm dv$). \emph{(b)} the chosen burns cluster at perigee.}
+\includegraphics[width=0.82\textwidth]{smart1_duty_cycle.png}
+\caption{Under a 40\,\% duty constraint the binary optimizer rediscovers the
+Oberth strategy. Of $N=24$ equal-time slots on SMART-1's real GTO it selects
+the $K=10$ of largest measured energy gain --- exactly the slots straddling
+perigee, where the spacecraft is fastest ($\mathrm dE=v\,\mathrm dv$) --- while
+the coast slots fall at apogee. No orbital mechanics is built in; the
+perigee-thrust policy emerges from the discrete optimization. Earth is shown
+to scale at the focus.}
 \label{fig:oberth}
 \end{figure}
 
@@ -304,7 +315,8 @@ boundary.
 Over a window straddling the SOI passage, the thruster is pointed
 anti-tangentially \emph{relative to the Moon}; the QUBO chooses which slots
 fire to drive the Moon-relative energy negative. It selects burns clustered at
-perilune (Oberth again, now for braking) and binds the orbit:
+perilune (Oberth again, now for braking) and binds the orbit
+(Fig.~\ref{fig:trajectory}b):
 $E\colon +0.022\!\to\!-0.006\ \si{\km\squared\per\second\squared}$ for
 \SI{41}{\meter\per\second} of braking. A more aggressive window
 ($\sim$\SI{63}{\meter\per\second}, the full single-pass authority) tightens it
