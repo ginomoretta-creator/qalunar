@@ -59,21 +59,21 @@ DUTY_CYCLE = 0.40                  # SMART-1's ~40 %
 N_BURNS = round(DUTY_CYCLE * N_SLOTS)
 SA_NUM_READS = 20_000
 
-# Dark "space" palette, consistent with run_smart1_trajectory_figure.
-C_BG = "#070a12"
-C_EARTH = "#2f6fe0"
-C_EARTH_GLOW = "#8fb8ff"
-C_ORBIT = "#33d6e6"
-C_BURN = "#ff7a36"
-C_COAST = "#7b8499"
-C_FAINT = "#3a4257"
-C_TEXT = "#cdd4e0"
+# Light "publication" palette, consistent with run_smart1_trajectory_figure.
+C_BG = "white"
+C_EARTH = "#1f5fc0"
+C_EARTH_GLOW = "#bcd4ff"
+C_ORBIT = "#0e7c8b"
+C_BURN = "#d9531e"
+C_COAST = "#8a8f9c"
+C_FAINT = "#c2c7d0"
+C_TEXT = "#1e2430"
 
 
-def _glow(ax, x, y, color, lw=1.4, n=5, base_alpha=0.08, zorder=3):
-    """Draw a line with a soft neon glow (several fading strokes)."""
+def _glow(ax, x, y, color, lw=1.6, n=2, base_alpha=0.05, zorder=3):
+    """Draw a line with a soft halo (a couple of faint wide strokes)."""
     for k in range(n, 0, -1):
-        ax.plot(x, y, color=color, lw=lw + 2.4 * k, alpha=base_alpha,
+        ax.plot(x, y, color=color, lw=lw + 2.0 * k, alpha=base_alpha,
                 solid_capstyle="round", zorder=zorder)
     ax.plot(x, y, color=color, lw=lw, solid_capstyle="round", zorder=zorder + 1)
 
@@ -411,8 +411,10 @@ def _draw(ta_deg, v_kms, q_qubo, sma, ecc) -> None:
     fig.patch.set_facecolor(C_BG)
     ax.set_facecolor(C_BG)
     ax.set_aspect("equal")
+    ax.grid(True, color=C_FAINT, lw=0.5, alpha=0.6)
+    ax.set_axisbelow(True)
 
-    _glow(ax, ex, ey, C_ORBIT, lw=1.0, n=4, base_alpha=0.05, zorder=2)
+    _glow(ax, ex, ey, C_ORBIT, lw=1.2, n=2, base_alpha=0.05, zorder=2)
 
     # Earth at the focus
     ax.add_patch(plt.Circle((0, 0), EARTH_RADIUS_KM * 1e-3 * 1.9,
@@ -426,7 +428,7 @@ def _draw(ta_deg, v_kms, q_qubo, sma, ecc) -> None:
     for xx, yy in zip(sx[on], sy[on]):
         ax.scatter([xx], [yy], s=340, color=C_BURN, alpha=0.14, lw=0, zorder=6)
         ax.scatter([xx], [yy], s=170, color=C_BURN, alpha=0.20, lw=0, zorder=6)
-    ax.scatter(sx[on], sy[on], s=96, color=C_BURN, edgecolors="white", lw=0.7,
+    ax.scatter(sx[on], sy[on], s=96, color=C_BURN, edgecolors=C_TEXT, lw=0.6,
                zorder=8, label=f"QUBO fires here ({int(on.sum())})")
 
     rp, ra = sma * (1 - ecc) * 1e-3, sma * (1 + ecc) * 1e-3
@@ -443,7 +445,7 @@ def _draw(ta_deg, v_kms, q_qubo, sma, ecc) -> None:
     ax.set_xlabel("x  ($10^3$ km, perifocal — Earth at focus)")
     ax.set_ylabel("y  ($10^3$ km)")
     for s in ax.spines.values():
-        s.set_color(C_FAINT)
+        s.set_color("#9aa0ab")
     ax.tick_params(colors=C_TEXT, labelsize=8)
     ax.xaxis.label.set_color(C_TEXT)
     ax.yaxis.label.set_color(C_TEXT)

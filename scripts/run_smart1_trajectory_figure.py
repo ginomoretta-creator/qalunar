@@ -37,15 +37,15 @@ EARTH_RADIUS_KM = 6_378.137
 MOON_RADIUS_KM = 1_737.4
 MOON_SOI_KM = viz.MOON_SOI_KM
 
-# Dark "space" palette (OrbitView-like, but clean for print).
-C_BG = "#070a12"
-C_EARTH = "#2f6fe0"
-C_EARTH_GLOW = "#8fb8ff"
-C_MOON = "#c2c2cc"
-C_SPIRAL = "#33d6e6"      # cyan -- Earth-bound thrusting spiral
-C_CAPTURE = "#ff7a36"     # warm  -- lunar braking / capture
-C_FAINT = "#3a4257"
-C_TEXT = "#cdd4e0"
+# Light "publication" palette (white background, clean for print).
+C_BG = "white"
+C_EARTH = "#1f5fc0"
+C_EARTH_GLOW = "#bcd4ff"
+C_MOON = "#8a8f9c"
+C_SPIRAL = "#0e7c8b"      # teal -- Earth-bound thrusting spiral
+C_CAPTURE = "#d9531e"     # burnt orange -- lunar braking / capture
+C_FAINT = "#c2c7d0"
+C_TEXT = "#1e2430"
 
 
 def build_ephem_script(report: str) -> str:
@@ -200,10 +200,10 @@ def _generate_ephemeris() -> np.ndarray:
         tmp.unlink(missing_ok=True)
 
 
-def _glow(ax, x, y, color, lw=1.6, n=5, base_alpha=0.10, zorder=3):
-    """Draw a line with a soft neon glow (several fading strokes)."""
+def _glow(ax, x, y, color, lw=1.7, n=2, base_alpha=0.05, zorder=3):
+    """Draw a line with a soft halo (a couple of faint wide strokes)."""
     for k in range(n, 0, -1):
-        ax.plot(x, y, color=color, lw=lw + 2.6 * k, alpha=base_alpha,
+        ax.plot(x, y, color=color, lw=lw + 2.0 * k, alpha=base_alpha,
                 solid_capstyle="round", zorder=zorder)
     ax.plot(x, y, color=color, lw=lw, solid_capstyle="round", zorder=zorder + 1)
 
@@ -221,8 +221,10 @@ def _disk(ax, cx, cy, r, color, glow=None, zorder=6):
 def _style_axes(ax):
     ax.set_facecolor(C_BG)
     ax.set_aspect("equal")
+    ax.grid(True, color=C_FAINT, lw=0.5, alpha=0.6)
+    ax.set_axisbelow(True)
     for s in ax.spines.values():
-        s.set_color(C_FAINT)
+        s.set_color("#9aa0ab")
     ax.tick_params(colors=C_TEXT, labelsize=8)
     ax.xaxis.label.set_color(C_TEXT)
     ax.yaxis.label.set_color(C_TEXT)
@@ -253,7 +255,8 @@ def _plot(data: np.ndarray) -> None:
     _glow(axA, xe, ye, C_SPIRAL, lw=1.3, zorder=3)
     _disk(axA, 0, 0, EARTH_RADIUS_KM * 1e-3, C_EARTH, glow=C_EARTH_GLOW, zorder=8)
     _disk(axA, mxe[enc], mye[enc], MOON_RADIUS_KM * 1e-3 * 3.0, C_MOON, zorder=7)
-    axA.scatter([xe[0]], [ye[0]], s=22, color="white", zorder=9)
+    axA.scatter([xe[0]], [ye[0]], s=24, color=C_TEXT, edgecolors="white",
+                lw=0.6, zorder=9)
     axA.annotate("GTO", (xe[0], ye[0]), textcoords="offset points",
                  xytext=(8, -10), color=C_TEXT, fontsize=8)
     axA.annotate("Moon\n(encounter)", (mxe[enc], mye[enc]),
@@ -279,7 +282,8 @@ def _plot(data: np.ndarray) -> None:
     _glow(axB, xm, ym, C_CAPTURE, lw=1.5, zorder=3)
     _disk(axB, 0, 0, MOON_RADIUS_KM, C_MOON, zorder=8)
     if near.any():
-        axB.scatter([xm[0]], [ym[0]], s=22, color="white", zorder=9)
+        axB.scatter([xm[0]], [ym[0]], s=24, color=C_TEXT, edgecolors="white",
+                    lw=0.6, zorder=9)
         axB.annotate("SOI entry", (xm[0], ym[0]), textcoords="offset points",
                      xytext=(8, 6), color=C_TEXT, fontsize=8)
     axB.set_title("(b)  Moon-centred: binary-QUBO capture into a bound orbit",
