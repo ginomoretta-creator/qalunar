@@ -1,0 +1,14 @@
+{
+  "passes": 36,
+  "final_apogee_km": 370191.87314561533,
+  "reached_target": true,
+  "dv_total_m_s": 470.38530829386474,
+  "elapsed_days": 77.58417376823841,
+  "fuel_used_kg": 0.6447763275599998,
+  "fuel_left_kg": 2.81060967244,
+  "K": 2,
+  "N_WIN": 10,
+  "duty_per_pass": 0.03,
+  "power_w_per_pass": 14.805,
+  "final_epoch": "25 Mar 2026 14:01:12.613"
+}
