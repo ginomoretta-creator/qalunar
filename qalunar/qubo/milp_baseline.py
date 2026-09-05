@@ -85,12 +85,24 @@ def solve_scheduling_milp(
         If ``True`` (default), aux variables ``y_{ij}`` are only created
         for pairs with ``Q_ij != 0``. The scheduling QUBO has dense Q in
         general, but exclusion-only or short-arc problems can be sparse.
+
+    Notes
+    -----
+    The objective is scaled so that its largest coefficient is 1 before it is
+    handed to HiGHS. The scheduling QUBO's energies are O(1e-6); HiGHS's
+    absolute feasibility/optimality tolerances (~1e-6 to 1e-7) are of the
+    same order, and without scaling the solver returned "optimal" solutions
+    above the true optimum (e.g. 6.26e-6 against the exact 5.85e-6 at N=15).
+    The returned energy is always recomputed from the unscaled QUBO.
     """
     import time
 
     Q = qubo.Q
     lin = qubo.linear
     M = qubo.n_vars
+    scale = float(max(np.abs(Q).max(), np.abs(lin).max(), 1e-300))
+    Q = Q / scale
+    lin = lin / scale
 
     # Decision: x = [q_0, ..., q_{M-1},  y_{i,j} for each coupled pair]
     # Linear objective coefficients

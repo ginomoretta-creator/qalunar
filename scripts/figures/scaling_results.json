@@ -5,45 +5,56 @@
     "results": {
       "brute_force": {
         "energy": 9.137258478263263e-05,
-        "time": 0.006623799912631512,
+        "time": 0.009503099950961769,
         "note": "exact"
       },
       "milp": {
         "energy": 9.137258478263263e-05,
-        "time": 0.29412049998063594,
+        "time": 0.3788429999258369,
         "is_optimal": true,
         "n_aux": 45
       },
       "sa": {
         "energy": 9.137258478263263e-05,
-        "time": 0.21962990006431937,
+        "time": 0.2668549999361858,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 9.137258478263263e-05,
+        "time": 0.3212187000317499,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
         "energy": 9.137258478263263e-05,
-        "time": 0.8222450000466779,
-        "num_reads": 1000
+        "time": 1.9351638000225648,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
         "p": 1.0,
-        "t_run": 0.024674850015435366,
-        "tts99": 0.024674850015435366,
+        "t_run": 0.03021160499774851,
+        "tts99": 0.03021160499774851,
         "best": 9.137258478263263e-05,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
         "p": 1.0,
-        "t_run": 0.13291292999056167,
-        "tts99": 0.13291292999056167,
+        "t_run": 0.6326573949831072,
+        "tts99": 0.6326573949831072,
         "best": 9.137258478263263e-05,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 1.0,
+        "t_run": 0.31546587000484577,
+        "tts99": 0.31546587000484577,
+        "best": 9.137258478263263e-05,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
@@ -57,45 +68,56 @@
     "results": {
       "brute_force": {
         "energy": 5.852908866106274e-06,
-        "time": 0.2314843999920413,
+        "time": 0.2666802000021562,
         "note": "exact"
       },
       "milp": {
         "energy": 6.257804540737814e-06,
-        "time": 1.2961591000203043,
+        "time": 1.2362106000073254,
         "is_optimal": true,
         "n_aux": 105
       },
       "sa": {
         "energy": 5.852908866106274e-06,
-        "time": 0.44631880009546876,
+        "time": 0.4246330999303609,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 5.852908866106274e-06,
+        "time": 0.4204188999719918,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
         "energy": 5.852908866106274e-06,
-        "time": 1.4053582000778988,
-        "num_reads": 1000
+        "time": 2.822340599959716,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
         "p": 0.8,
-        "t_run": 0.04331772499717772,
-        "tts99": 0.12394730740506398,
+        "t_run": 0.0464271699951496,
+        "tts99": 0.13284452753949785,
         "best": 5.852908866106274e-06,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
-        "p": 0.6,
-        "t_run": 0.15478214499307796,
-        "tts99": 0.7779169805499085,
+        "p": 0.75,
+        "t_run": 0.6777136399876327,
+        "tts99": 2.2513159809632963,
         "best": 5.852908866106274e-06,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 1.0,
+        "t_run": 0.3202049750078004,
+        "tts99": 0.3202049750078004,
+        "best": 5.852908866106274e-06,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
@@ -109,45 +131,56 @@
     "results": {
       "brute_force": {
         "energy": 1.0168579308298016e-05,
-        "time": 8.999143300112337,
+        "time": 10.82853509997949,
         "note": "exact"
       },
       "milp": {
         "energy": 1.0168579308298016e-05,
-        "time": 3.5009370000334457,
+        "time": 4.310158699983731,
         "is_optimal": true,
         "n_aux": 190
       },
       "sa": {
         "energy": 1.0168579308298016e-05,
-        "time": 0.4990504999877885,
+        "time": 0.6737536999862641,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 1.0168579308298016e-05,
+        "time": 0.3304186000023037,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
         "energy": 1.0168579308298016e-05,
-        "time": 1.4289331999607384,
-        "num_reads": 1000
+        "time": 3.623383899917826,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
         "p": 1.0,
-        "t_run": 0.060640270001022144,
-        "tts99": 0.060640270001022144,
+        "t_run": 0.06588676501414739,
+        "tts99": 0.06588676501414739,
         "best": 1.0168579308298016e-05,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
-        "p": 0.7,
-        "t_run": 0.2548423949861899,
-        "tts99": 0.9747667017887982,
+        "p": 1.0,
+        "t_run": 0.7092308049905114,
+        "tts99": 0.7092308049905114,
         "best": 1.0168579308298016e-05,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 1.0,
+        "t_run": 0.31976116001605986,
+        "tts99": 0.31976116001605986,
+        "best": 1.0168579308298016e-05,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
@@ -161,44 +194,55 @@
     "results": {
       "milp": {
         "energy": 5.200896582934107e-06,
-        "time": 60.0439042999642,
+        "time": 60.048617899999954,
         "is_optimal": false,
         "n_aux": 1225
       },
       "sa": {
         "energy": 4.6827325157622335e-06,
-        "time": 1.9204284000443295,
+        "time": 2.729189799982123,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 8.326712099987824e-06,
+        "time": 0.5312475999817252,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
-        "energy": 0.0158441142921197,
-        "time": 4.076555699924938,
-        "num_reads": 1000
+        "energy": 3.132638750906209e-06,
+        "time": 5.398327199975029,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
         "p": 0.0,
-        "t_run": 0.20552177500212565,
+        "t_run": 0.2578199349984061,
         "tts99": Infinity,
         "best": 6.36561982055462e-06,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
-        "p": 0.0,
-        "t_run": 0.2880681399954483,
-        "tts99": Infinity,
-        "best": 0.0034125971845371623,
+        "p": 0.1,
+        "t_run": 1.4416134000115561,
+        "tts99": 63.01103414314013,
+        "best": 3.132638750906209e-06,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 0.0,
+        "t_run": 0.37184334999183194,
+        "tts99": Infinity,
+        "best": 4.115083672147617e-06,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
-      "energy": 4.6827325157622335e-06,
+      "energy": 3.132638750906209e-06,
       "kind": "best-known"
     }
   },
@@ -208,44 +252,55 @@
     "results": {
       "milp": {
         "energy": 4.1644296226804774e-05,
-        "time": 60.115673599997535,
+        "time": 60.21703729999717,
         "is_optimal": false,
         "n_aux": 4950
       },
       "sa": {
         "energy": 8.475837780713702e-06,
-        "time": 8.73593309998978,
+        "time": 8.551725399913266,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 2.9858622741497053e-06,
+        "time": 0.7695939000695944,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
-        "energy": 0.021028589474151864,
-        "time": 14.881242500036024,
-        "num_reads": 1000
+        "energy": 4.6842098934815266e-06,
+        "time": 6.144088300061412,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
-        "p": 0.05,
-        "t_run": 0.7631195450027007,
-        "tts99": 68.51373886104284,
+        "p": 0.0,
+        "t_run": 0.8812553250056225,
+        "tts99": Infinity,
         "best": 7.778046226051584e-06,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
         "p": 0.0,
-        "t_run": 1.038268510013586,
+        "t_run": 1.7832884200033732,
         "tts99": Infinity,
-        "best": 0.003412597184525584,
+        "best": 4.322296435854776e-06,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 1.0,
+        "t_run": 0.458714135014452,
+        "tts99": 0.458714135014452,
+        "best": 2.9858622741497053e-06,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
-      "energy": 7.778046226051584e-06,
+      "energy": 2.9858622741497053e-06,
       "kind": "best-known"
     }
   },
@@ -255,44 +310,55 @@
     "results": {
       "milp": {
         "energy": 0.001232618770166788,
-        "time": 60.87465789995622,
+        "time": 61.09099040005822,
         "is_optimal": false,
         "n_aux": 19900
       },
       "sa": {
         "energy": 7.62545805565399e-06,
-        "time": 27.360137599986047,
+        "time": 29.466038800077513,
         "num_reads": 1000
       },
       "kerberos": {
-        "error": "ProblemIntaking.__init__() got an unexpected keyword argument 'seed'"
+        "energy": 4.638025746257508e-06,
+        "time": 1.913128999993205,
+        "backend": "local classical tabu+SA"
       },
       "sb": {
-        "energy": 0.023558248540699336,
-        "time": 39.945683499914594,
-        "num_reads": 1000
+        "energy": 6.718289645135742e-06,
+        "time": 11.569562099990435,
+        "num_reads": 1000,
+        "backend": "sb_torch"
       }
     },
     "tts": {
       "sa": {
-        "p": 0.05,
-        "t_run": 3.4021306550013835,
-        "tts99": 305.44715149064683,
+        "p": 0.0,
+        "t_run": 3.2370220999990122,
+        "tts99": Infinity,
         "best": 7.030752963601075e-06,
         "repeats": 20,
         "budget": 100
       },
       "sb": {
-        "p": 0.0,
-        "t_run": 3.151178505003918,
-        "tts99": Infinity,
-        "best": 0.023558248540699336,
+        "p": 0.05,
+        "t_run": 6.089915589999873,
+        "tts99": 546.7595334851085,
+        "best": 3.7999992197699367e-06,
         "repeats": 20,
         "budget": 100
+      },
+      "kerberos": {
+        "p": 0.0,
+        "t_run": 1.5928082950005773,
+        "tts99": Infinity,
+        "best": 4.638025746257508e-06,
+        "repeats": 20,
+        "budget": 3
       }
     },
     "reference": {
-      "energy": 7.030752963601075e-06,
+      "energy": 3.7999992197699367e-06,
       "kind": "best-known"
     }
   }
