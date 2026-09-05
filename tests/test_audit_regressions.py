@@ -362,3 +362,42 @@ class TestFlownTimeline:
         assert res.windows == []
         assert [seg.kind for seg in res.segments] == ["drift", "drift"]
         assert res.total_tof == pytest.approx(0.4)
+
+
+# ---------------------------------------------------------------------------
+# Quantum-inspired tier (simulated bifurcation)
+# ---------------------------------------------------------------------------
+
+
+class TestSimulatedBifurcation:
+    """dSB is a heuristic; the benchmark accounts for p < 1 via TTS. What is
+    pinned here is that it is a *valid* sampler (bitstrings, consistent energy,
+    deterministic under a seed) and that it recovers the exact optimum on the
+    small instance where SA does."""
+
+    def _qubo(self, dyn: PlanarCR3BP, N: int = 10):
+        rng = np.random.default_rng(0)
+        u = rng.uniform(-0.03, 0.03, 2)
+        target = dyn.propagate(STATE0, T_SPAN, n_steps=2000, control=u)[1][-1]
+        cfg = ThrustSchedulingConfig(thrust_magnitude=0.05, thrust_direction="fixed",
+                                     thrust_vector=u / np.linalg.norm(u))
+        return build_thrust_scheduling_qubo(dyn, STATE0, target, T_SPAN,
+                                            n_decision_steps=N, config=cfg)
+
+    def test_valid_and_deterministic(self, dyn: PlanarCR3BP) -> None:
+        from qalunar.qubo.scheduling_samplers import sample_simulated_bifurcation
+        q = self._qubo(dyn)
+        a = sample_simulated_bifurcation(q, num_reads=50, seed=3)
+        b = sample_simulated_bifurcation(q, num_reads=50, seed=3)
+        assert set(np.unique(a.schedule)) <= {0, 1}
+        assert a.energy == pytest.approx(q.energy(a.schedule))
+        np.testing.assert_array_equal(a.schedule, b.schedule)
+        assert a.backend == "sb" and a.metadata["discrete"] is True
+
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_recovers_optimum_at_n10(self, dyn: PlanarCR3BP, seed: int) -> None:
+        from qalunar.qubo.scheduling_samplers import sample_simulated_bifurcation
+        q = self._qubo(dyn, N=10)
+        bf = sample_brute_force(q)
+        sb = sample_simulated_bifurcation(q, num_reads=100, seed=seed)
+        assert sb.energy <= bf.energy * (1 + 1e-9) + 1e-15
