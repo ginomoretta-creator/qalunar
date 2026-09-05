@@ -58,3 +58,12 @@ logs/
 # (CSV/NPZ/JSON) and the generated .script files the manuscripts' figures
 # are regenerated from. Only scratch reports are excluded.
 scripts/figures/*.txt
+
+# Not for publication, kept locally only:
+#  - refs/: third-party publisher PDFs (redistribution would breach copyright)
+#  - a signed personal document
+#  - internal meeting-preparation notes naming a colleague
+refs/
+docs/*signed*.pdf
+presentation/*carbone*
+presentation/deep_dive_master_brief.md

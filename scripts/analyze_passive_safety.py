@@ -29,6 +29,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from qalunar.highfidelity import find_gmat_console
+
 # --- physical constants / design parameters (must match the GMAT script) ---
 MU_EARTH = 398600.4415  # km^3/s^2  (GMAT JGM-2 value)
 A_KM = 7078.137  # target semi-major axis (700 km altitude)
@@ -36,9 +38,7 @@ DI_DEG = 0.01  # relative inclination
 STANDOFF_KM = 5.0  # nominal V-bar standoff
 
 # Default GMAT output location (override with a path argument).
-DEFAULT_REPORT = Path(
-    r"C:\Users\ginom\Downloads\gmat-win-R2025a\GMAT_R2025a\output\PassiveSafety.txt"
-)
+DEFAULT_REPORT = find_gmat_console().parent.parent / "output" / "PassiveSafety.txt"
 FIGURE_PATH = Path(__file__).resolve().parent / "figures" / "passive_safety_standoff.png"
 
 

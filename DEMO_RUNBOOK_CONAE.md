@@ -12,7 +12,7 @@ result → decides the next step.
 ## Before the meeting — setup checklist
 
 - [ ] GMAT R2025a installed; GmatConsole reachable
-      (`C:\Users\ginom\Downloads\gmat-win-R2025a\GMAT_R2025a\bin\GmatConsole.exe`).
+      (`<GMAT_R2025a>/bin/GmatConsole.exe`, or set `QALUNAR_GMAT_CONSOLE`).
 - [ ] GMAT MCP server running and connected to Claude. Confirm the `gmat` tools
       are available (`runGmat`, `searchDocs`, `getGmatIdioms`, `getGmatSample`,
       `listGmatSamples`).

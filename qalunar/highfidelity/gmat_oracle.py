@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import uuid
@@ -96,8 +97,16 @@ __all__ = [
 V_KM_S: float = VELOCITY_M_S / 1000.0
 """Canonical synodic velocity unit in km/s (~1.0232)."""
 
-_DEFAULT_GMAT_CONSOLE = Path(
-    r"C:\Users\ginom\Downloads\gmat-win-R2025a\GMAT_R2025a\bin\GmatConsole.exe"
+_CONSOLE_NAME = "GmatConsole.exe" if os.name == "nt" else "GmatConsole"
+
+# Searched in order after the environment variable and PATH. Kept free of
+# any machine-specific path so a checkout works on someone else's computer.
+_GMAT_SEARCH_ROOTS = (
+    Path.home() / "Downloads" / "gmat-win-R2025a" / "GMAT_R2025a",
+    Path.home() / "GMAT_R2025a",
+    Path("C:/Program Files/GMAT/R2025a"),
+    Path("/opt/GMAT/R2025a"),
+    Path("/usr/local/GMAT/R2025a"),
 )
 
 _ERROR_PAT = re.compile(
@@ -109,11 +118,26 @@ _SUCCESS_PAT = re.compile(r"Mission run completed", re.IGNORECASE)
 
 
 def find_gmat_console() -> Path:
-    """Locate GmatConsole.exe (``QALUNAR_GMAT_CONSOLE`` env var wins)."""
+    """Locate the GMAT console binary.
+
+    Search order: the ``QALUNAR_GMAT_CONSOLE`` environment variable, then
+    ``PATH``, then the conventional install roots of
+    :data:`_GMAT_SEARCH_ROOTS`. The returned path is not guaranteed to
+    exist; callers check ``.exists()`` and exit with instructions.
+    """
     env = os.environ.get("QALUNAR_GMAT_CONSOLE")
     if env:
         return Path(env)
-    return _DEFAULT_GMAT_CONSOLE
+    found = shutil.which(_CONSOLE_NAME) or shutil.which("GmatConsole")
+    if found:
+        return Path(found)
+    for root in _GMAT_SEARCH_ROOTS:
+        candidate = root / "bin" / _CONSOLE_NAME
+        if candidate.exists():
+            return candidate
+    # Nothing found: return the first candidate so the error message names
+    # a plausible location and the env-var hint.
+    return _GMAT_SEARCH_ROOTS[0] / "bin" / _CONSOLE_NAME
 
 
 _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
