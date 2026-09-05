@@ -66,11 +66,13 @@ def _run(script: str, report: str, console: Path, timeout: float = 600) -> np.nd
                                      encoding="ascii") as fh:
         fh.write(script)
         path = Path(fh.name)
+    log = path.with_suffix(".log")     # private log per run (parallel-safe)
     try:
-        proc = subprocess.run([str(console), str(path)], cwd=str(console.parent),
+        proc = subprocess.run([str(console), "-l", str(log), "-r", str(path)],
+                              cwd=str(console.parent),
                               capture_output=True, text=True, timeout=timeout)
         raw = (proc.stdout or "") + (proc.stderr or "")
-        if not re.search(r"Mission run completed", raw):
+        if proc.returncode != 0 or not re.search(r"Mission run completed", raw):
             raise RuntimeError("GMAT failed:\n" + "\n".join(raw.splitlines()[-15:]))
         for d in (console.parent.parent / "output", console.parent / "output",
                   console.parent):
@@ -83,6 +85,7 @@ def _run(script: str, report: str, console: Path, timeout: float = 600) -> np.nd
         raise FileNotFoundError(report)
     finally:
         path.unlink(missing_ok=True)
+        log.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

@@ -126,7 +126,11 @@ SolarP.ShadowBodies = {{Earth, Luna}};
 Create FiniteBurn Brake;
 Brake.Thrusters = {{Brk}};
 """
-    return f"""Create Spacecraft Sat;
+    return f"""Create CoordinateSystem MoonMJ;
+MoonMJ.Origin = Luna;
+MoonMJ.Axes = MJ2000Eq;
+
+Create Spacecraft Sat;
 Sat.DateFormat = UTCGregorian;
 Sat.Epoch = '{epoch}';
 Sat.CoordinateSystem = EarthMJ2000Eq;
@@ -207,7 +211,7 @@ def to_periselene(state, epoch, fuel, console):
     rep = f"p3_peri_{uuid.uuid4().hex[:8]}.txt"
     script = _header(state, epoch, fuel, False, rep) + f"""
 Propagate Prop(Sat) {{Sat.Luna.Periapsis, Sat.ElapsedSecs = 600000}};
-Report Rep Sat.ElapsedSecs {CART} Sat.XeTank.FuelMass Sat.Luna.RMAG Sat.Luna.VMAG Sat.Luna.Energy;
+Report Rep Sat.ElapsedSecs {CART} Sat.XeTank.FuelMass Sat.Luna.RMAG Sat.MoonMJ.VMAG Sat.Luna.Energy;
 """
     row = _run(script, rep, console)[-1]
     return {"elapsed_s": row[0], "state": row[1:7], "fuel": row[7], "rmag": row[8],

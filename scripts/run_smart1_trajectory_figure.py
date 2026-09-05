@@ -113,8 +113,11 @@ Create SolarPowerSystem SolarP;
 SolarP.InitialMaxPower = 1.9;
 SolarP.AnnualDecayRate = 0;
 SolarP.Margin = 0;
-SolarP.ShadowModel = 'DualCone';
-SolarP.ShadowBodies = {{Earth}};
+% Eclipses are neglected in the SMART-1 reproduction: the cached capture
+% schedule (smart1_capture.csv) and the 04 Oct 2003 encounter phasing were
+% found with continuous power; with DualCone the spiral timing shifts and
+% the encounter is lost. State this simplification in the manuscript.
+SolarP.ShadowModel = 'None';
 
 Create FiniteBurn Spiral;
 Spiral.Thrusters = {{Hall}};
@@ -288,7 +291,7 @@ def _plot(data: np.ndarray) -> None:
                     lw=0.6, zorder=9)
         axB.annotate("SOI entry", (xm[0], ym[0]), textcoords="offset points",
                      xytext=(8, 6), color=C_TEXT, fontsize=8)
-    axB.set_title("(b)  Moon-centred: binary-QUBO capture into a bound orbit",
+    axB.set_title("(b)  Moon-centred: binary-QUBO braking at the lunar encounter",
                   color=C_TEXT, fontsize=10.5, pad=8)
     axB.set_xlabel("x  (km, Moon MJ2000Eq)")
     axB.set_ylabel("y  (km)")
