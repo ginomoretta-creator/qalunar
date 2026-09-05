@@ -21,7 +21,15 @@ candidate is re-flown in the truth model under a monotone trust-region rule.
 | `qalunar/qubo/milp_baseline.py` | McCormick-lifted MILP (HiGHS) — constraint-native reference |
 | `qalunar/highfidelity/gmat_oracle.py` | GMAT truth model: script templating, headless run, report parsing, finite-difference QUBO |
 | `qalunar/reference/` | Classical baselines: Edelbaum, Hermite–Simpson direct collocation, primer vector |
-| `scripts/run_*.py` | Experiment entry points (see docstrings); `scripts/figures/` holds their cached outputs |
+| `scripts/run_conae_duty_cycle.py` | Phase 1: per-slot perigee gains in GMAT, cardinality QUBO, fly-back validation, 5-pass climb |
+| `scripts/run_conae_phase2_binary.py` | Phase 2: receding-horizon binary apogee raise in GMAT, one QUBO per perigee pass |
+| `scripts/run_conae_phase3_encounter.py` | Phase 3: encounter by waiting, arrival metrics, capture feasibility under the power budget |
+| `scripts/run_scaling_sweep.py` | Solver benchmark with time-to-target statistics (BF, MILP, SA, SB, Kerberos) |
+| `scripts/run_embedding_study.py` | Offline minor embedding of the dense QUBO into Pegasus P16 / Zephyr Z12 |
+| `scripts/run_collocation_mesh_study.py` | Mesh refinement of the direct-collocation reference (warm-started, Richardson) |
+| `scripts/make_paper_tables.py` | Generates the manuscript's tables from the cached artifacts |
+| `scripts/run_*.py` (others) | Further experiments (see docstrings); `scripts/figures/` holds all cached outputs |
+| `docs/results_block_b.md`, `docs/results_block_c.md` | Result tables of the re-flown mission and of the benchmarks |
 | `tests/` | `pytest` suite; GMAT-dependent tests skip when `GmatConsole.exe` is absent |
 
 ## Install
@@ -31,6 +39,7 @@ python -m venv .venv
 .venv/Scripts/activate            # Windows
 pip install -r requirements-lock.txt   # exact versions the results were produced with
 pip install -e .
+pip install simulated-bifurcation      # optional: the SB tier of the benchmark (PyTorch)
 ```
 
 `requirements.txt` / `pyproject.toml` give the loose floors; `requirements-lock.txt`
