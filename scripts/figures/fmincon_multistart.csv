@@ -1,0 +1,103 @@
+case,solver,seed_index,objective,feasible,success,max_defect,max_bc_error,n_iterations
+A (baseline),SLSQP,0,4.01281111,True,True,1.719e-09,0.000e+00,153
+A (baseline),SLSQP,1,9.27576199,False,False,2.834e-03,0.000e+00,300
+A (baseline),SLSQP,2,10.73793625,True,True,8.820e-12,0.000e+00,264
+A (baseline),SLSQP,3,5.23389557,True,True,2.039e-10,0.000e+00,181
+A (baseline),SLSQP,4,15.22114107,False,False,3.594e-05,0.000e+00,300
+A (baseline),SLSQP,5,7.78400670,False,False,1.057e-02,0.000e+00,300
+A (baseline),SLSQP,6,19.70200229,True,True,1.767e-10,0.000e+00,236
+A (baseline),SLSQP,7,4.79123362,True,True,7.024e-10,0.000e+00,165
+A (baseline),SLSQP,8,3.22693011,True,True,3.214e-10,0.000e+00,237
+A (baseline),SLSQP,9,4.00534330,True,True,3.889e-09,0.000e+00,265
+A (baseline),SLSQP,10,4.72882885,False,False,3.636e-03,0.000e+00,300
+A (baseline),SLSQP,11,6.48121719,False,False,8.953e-03,0.000e+00,300
+A (baseline),SLSQP,12,1.40527896,True,True,3.355e-10,0.000e+00,289
+A (baseline),SLSQP,13,2.83577057,True,True,9.300e-11,0.000e+00,267
+A (baseline),SLSQP,14,7.39739849,True,True,2.049e-11,0.000e+00,191
+A (baseline),SLSQP,15,13.70919865,False,False,5.835e-02,0.000e+00,300
+A (baseline),SLSQP,16,12.49175734,True,True,2.768e-10,0.000e+00,252
+A (baseline),SLSQP,17,4.14934645,True,True,7.960e-11,0.000e+00,209
+A (baseline),SLSQP,18,15.66391772,False,False,4.628e-02,0.000e+00,300
+A (baseline),SLSQP,19,15.00460587,False,False,3.549e-02,0.000e+00,300
+A (baseline),SLSQP,20,4.69750332,False,False,1.159e-02,0.000e+00,300
+A (baseline),SLSQP,21,4.34339233,False,False,2.578e-05,0.000e+00,300
+A (baseline),SLSQP,22,6.19000247,False,False,3.178e-02,0.000e+00,300
+A (baseline),SLSQP,23,3.88991752,True,True,1.755e-10,0.000e+00,284
+A (baseline),SLSQP,24,6.86129493,False,False,8.782e-03,0.000e+00,300
+A (baseline),SLSQP,25,17.08390553,False,False,2.639e-03,0.000e+00,300
+A (baseline),SLSQP,26,17.73700618,False,False,2.043e-06,0.000e+00,300
+A (baseline),SLSQP,27,7.08551110,True,True,5.244e-10,0.000e+00,287
+A (baseline),SLSQP,28,9.68091516,False,False,3.322e-02,0.000e+00,300
+A (baseline),SLSQP,29,11.35928837,False,False,2.606e-02,0.000e+00,300
+A (baseline),SLSQP,30,9.10998351,True,True,1.169e-09,0.000e+00,251
+A (baseline),SLSQP,31,20.29645778,False,False,5.752e-04,0.000e+00,300
+B (longer T),SLSQP,0,9.89754062,True,True,3.049e-10,0.000e+00,74
+B (longer T),SLSQP,1,4.38839425,True,True,6.677e-12,0.000e+00,118
+B (longer T),SLSQP,2,8.39443493,True,True,2.324e-10,0.000e+00,174
+B (longer T),SLSQP,3,6.53718708,False,False,1.244e-05,0.000e+00,300
+B (longer T),SLSQP,4,7.68200108,True,True,7.092e-13,0.000e+00,168
+B (longer T),SLSQP,5,7.20605611,False,False,9.960e-05,0.000e+00,300
+B (longer T),SLSQP,6,8.05046881,False,False,3.084e-03,0.000e+00,300
+B (longer T),SLSQP,7,6.93210075,False,False,2.182e-03,0.000e+00,300
+B (longer T),SLSQP,8,6.17823409,True,True,2.546e-12,0.000e+00,237
+B (longer T),SLSQP,9,7.84378590,True,True,2.732e-11,0.000e+00,176
+B (longer T),SLSQP,10,6.45183118,False,False,8.432e-06,0.000e+00,300
+B (longer T),SLSQP,11,2.82214609,True,True,1.078e-09,0.000e+00,190
+B (longer T),SLSQP,12,1.63601193,False,False,2.563e-04,0.000e+00,300
+B (longer T),SLSQP,13,2.70560225,True,True,1.354e-09,0.000e+00,259
+B (longer T),SLSQP,14,6.85023477,False,False,4.748e-04,0.000e+00,300
+B (longer T),SLSQP,15,8.36593257,True,False,4.108e-09,0.000e+00,300
+B (longer T),SLSQP,16,6.56291084,False,False,5.242e-03,0.000e+00,300
+B (longer T),SLSQP,17,5.32939419,False,False,2.571e-02,0.000e+00,300
+B (longer T),SLSQP,18,1.52990015,False,False,2.345e-03,0.000e+00,300
+B (longer T),SLSQP,19,8.11288019,True,True,1.825e-11,0.000e+00,130
+B (longer T),SLSQP,20,4.74704024,False,False,1.977e-05,0.000e+00,300
+B (longer T),SLSQP,21,10.04214339,True,True,7.983e-11,0.000e+00,89
+B (longer T),SLSQP,22,4.60435419,False,False,2.952e-03,0.000e+00,300
+B (longer T),SLSQP,23,7.37036845,True,True,1.105e-09,0.000e+00,276
+B (longer T),SLSQP,24,2.05878857,True,True,6.811e-10,0.000e+00,214
+B (longer T),SLSQP,25,6.64646727,True,True,7.020e-11,0.000e+00,280
+B (longer T),SLSQP,26,10.49919733,False,False,3.101e-03,0.000e+00,300
+B (longer T),SLSQP,27,3.39775839,False,False,4.547e-03,0.000e+00,300
+B (longer T),SLSQP,28,2.52232696,False,False,5.169e-03,0.000e+00,300
+B (longer T),SLSQP,29,8.31119849,False,False,1.394e-04,0.000e+00,300
+B (longer T),SLSQP,30,6.70319037,False,False,6.037e-02,0.000e+00,300
+B (longer T),SLSQP,31,5.33675101,False,False,3.435e-04,0.000e+00,300
+C (wide swing),SLSQP,0,1.46788201,True,True,7.645e-11,0.000e+00,78
+C (wide swing),SLSQP,1,1.74355210,True,True,4.284e-10,0.000e+00,210
+C (wide swing),SLSQP,2,1.56234284,True,True,6.052e-10,0.000e+00,215
+C (wide swing),SLSQP,3,1.46788201,True,True,1.569e-10,0.000e+00,83
+C (wide swing),SLSQP,4,1.46788203,True,True,3.680e-11,0.000e+00,119
+C (wide swing),SLSQP,5,2.55542612,False,False,7.605e-04,0.000e+00,300
+C (wide swing),SLSQP,6,1.36145772,True,True,7.290e-10,0.000e+00,269
+C (wide swing),SLSQP,7,14.73787224,False,False,9.839e-06,0.000e+00,300
+C (wide swing),SLSQP,8,3.00971068,True,True,1.294e-09,0.000e+00,215
+C (wide swing),SLSQP,9,1.46788205,True,True,3.248e-11,0.000e+00,81
+C (wide swing),SLSQP,10,1.46788201,True,True,2.440e-09,0.000e+00,89
+C (wide swing),SLSQP,11,1.46788201,True,True,3.824e-11,0.000e+00,102
+C (wide swing),SLSQP,12,1.46788202,True,True,2.576e-10,0.000e+00,104
+C (wide swing),SLSQP,13,15.67601385,False,False,1.591e-04,0.000e+00,300
+C (wide swing),SLSQP,14,2.49328065,True,True,2.016e-09,0.000e+00,234
+C (wide swing),SLSQP,15,1.46788204,True,True,4.801e-11,0.000e+00,92
+C (wide swing),SLSQP,16,1.93290575,True,True,1.076e-09,0.000e+00,213
+C (wide swing),SLSQP,17,1.46788200,True,True,6.297e-10,0.000e+00,240
+C (wide swing),SLSQP,18,1.35754296,True,True,1.364e-09,0.000e+00,260
+C (wide swing),SLSQP,19,1.74594610,True,True,2.662e-10,0.000e+00,204
+C (wide swing),SLSQP,20,3.40362847,True,True,2.282e-10,0.000e+00,233
+C (wide swing),SLSQP,21,2.42201508,True,True,1.628e-09,0.000e+00,145
+C (wide swing),SLSQP,22,1.36974440,True,True,3.454e-09,0.000e+00,221
+C (wide swing),SLSQP,23,2.05894623,True,True,1.392e-10,0.000e+00,79
+C (wide swing),SLSQP,24,1.46788201,True,True,3.567e-10,0.000e+00,145
+C (wide swing),SLSQP,25,2.45641712,True,True,4.653e-10,0.000e+00,137
+C (wide swing),SLSQP,26,12.50708361,False,False,1.116e-02,0.000e+00,300
+C (wide swing),SLSQP,27,19.52257906,False,False,1.629e-02,0.000e+00,300
+C (wide swing),SLSQP,28,2.61583864,True,True,1.026e-10,0.000e+00,200
+C (wide swing),SLSQP,29,3.16370147,True,True,9.870e-11,0.000e+00,243
+C (wide swing),SLSQP,30,1.77165942,True,True,1.051e-09,0.000e+00,122
+C (wide swing),SLSQP,31,2.74954332,True,True,1.999e-09,0.000e+00,144
+A (baseline),fmincon,0,3.90966827,True,True,1.776e-15,1.599e-29,287
+A (baseline),fmincon,1,9.21398072,False,False,5.073e-06,9.243e-18,300
+A (baseline),fmincon,2,8.39072394,False,False,8.405e-04,2.682e-17,300
+A (baseline),fmincon,3,5.23389557,True,True,1.776e-15,3.922e-31,191
+A (baseline),fmincon,4,10.68764949,True,True,2.665e-15,7.111e-23,258
+A (baseline),fmincon,5,22.51511958,True,True,1.332e-15,3.671e-22,145

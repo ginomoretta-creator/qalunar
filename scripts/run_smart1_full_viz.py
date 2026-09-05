@@ -46,7 +46,7 @@ N_SLOTS = 16
 # outside the SOI), so over weeks Earth perturbs it back out -- a longer
 # coast would render as a fly-away, not a capture. End the trace at the
 # braking hook near the Moon; tightening to a held orbit needs multi-pass.
-POST_COAST_DAYS = 1.0
+POST_COAST_DAYS = 11.0
 FIG_DIR = Path(__file__).resolve().parent / "figures"
 
 

@@ -1,0 +1,6 @@
+name,regime,dv_total_ms,tof_days,accel_mm_s2,wet_mass_kg,thrust_mn,isp_s,prop_fraction,prop_mass_kg,start_orbit,note
+qalunar (this work),EP spiral,2502.1,31.8,3.5000,100.0,350.0,1640.0,0.1441,14.41,"GEO circular (35,786 km alt)",all-binary on/off schedule; planar CR3BP
+qalunar @ SMART-1 pt,EP spiral,3461.4,440.0,0.1907,367.0,70.0,1640.0,0.1936,71.07,"GTO-energy circular (a=24,629 km)",qalunar method at SMART-1 a_0 and start energy; 40% duty
+"SMART-1 (ESA, 2003)",EP spiral,3500.0,410.0,0.1907,367.0,70.0,1640.0,0.1956,71.77,"GTO 7035 x 42,223 km","~207 revs, thrust 1/3-1/2 of each orbit, 74 kg Xe used"
+CAPSTONE (2022),low-energy,200.0,125.0,1.0000,25.0,25.0,200.0,0.0969,2.42,post-Photon BLT injection,Photon kick stage did the energy-raising; BLT capture ~tens m/s
+Apollo (TLI + LOI),impulsive,4007.0,3.5,20000.0000,45000.0,900000000.0,421.0,0.6211,27950.59,LEO ~185 km parking,impulsive chemical direct transfer (regime anchor)

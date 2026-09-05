@@ -1,0 +1,9 @@
+case,burns,delta_v_ms,pos_miss_km,vel_miss_ms
+coast / CR3BP truth,0,0.0,112610.0,689.36
+coast / GMAT truth,0,0.0,32410.8,53.96
+CR3BP design / CR3BP truth,3,16.37,1879.6,11.68
+CR3BP design / GMAT truth (open loop),3,16.37,4847.2,19.8
+GMAT-in-loop anchor-only / cold,3,16.37,15075.3,34.48
+GMAT-in-loop anchor-only / warm,3,16.37,4847.2,19.8
+GMAT-in-loop GMAT-linearised / cold,2,10.91,950.1,7.97
+GMAT-in-loop GMAT-linearised / warm,2,10.91,3622.2,4.72

@@ -1,0 +1,81 @@
+%General Mission Analysis Tool(GMAT) Script
+% Passive-safety V-bar standoff.
+% Design: the chaser shares the target SMA (nulls along-track drift) and
+% carries a small relative inclination di = 0.01 deg (bounded cross-track
+% oscillation of amplitude a*di), parked on the velocity bar (V-bar) behind
+% the target. If thrust is lost the chaser coasts on this bounded relative
+% ellipse and never reaches the target.
+% Force model: two-body + J2 only. Propagated 1 day (~14.6 orbits).
+% Note: "Target" is a reserved GMAT command word, so the spacecraft is "Tgt".
+
+%----------------------------------------
+%---------- Spacecraft
+%----------------------------------------
+Create Spacecraft Tgt;
+GMAT Tgt.DateFormat = UTCGregorian;
+GMAT Tgt.Epoch = '01 Jan 2025 00:00:00.000';
+GMAT Tgt.CoordinateSystem = EarthMJ2000Eq;
+GMAT Tgt.DisplayStateType = Keplerian;
+GMAT Tgt.SMA = 7078.137;
+GMAT Tgt.ECC = 0;
+GMAT Tgt.INC = 51.6;
+GMAT Tgt.RAAN = 0;
+GMAT Tgt.AOP = 0;
+GMAT Tgt.TA = 0;
+GMAT Tgt.DryMass = 100;
+
+Create Spacecraft Chaser;
+GMAT Chaser.DateFormat = UTCGregorian;
+GMAT Chaser.Epoch = '01 Jan 2025 00:00:00.000';
+GMAT Chaser.CoordinateSystem = EarthMJ2000Eq;
+GMAT Chaser.DisplayStateType = Keplerian;
+GMAT Chaser.SMA = 7078.137;
+GMAT Chaser.ECC = 0;
+GMAT Chaser.INC = 51.61;
+GMAT Chaser.RAAN = 0;
+GMAT Chaser.AOP = 0;
+GMAT Chaser.TA = 359.9595263;
+GMAT Chaser.DryMass = 100;
+
+%----------------------------------------
+%---------- Force model: two-body + J2 only
+%----------------------------------------
+Create ForceModel FM;
+GMAT FM.CentralBody = Earth;
+GMAT FM.PrimaryBodies = {Earth};
+GMAT FM.GravityField.Earth.Degree = 2;
+GMAT FM.GravityField.Earth.Order = 0;
+GMAT FM.GravityField.Earth.PotentialFile = 'JGM2.cof';
+GMAT FM.Drag.AtmosphereModel = None;
+GMAT FM.SRP = Off;
+
+Create Propagator Prop;
+GMAT Prop.FM = FM;
+GMAT Prop.Type = RungeKutta89;
+GMAT Prop.InitialStepSize = 60;
+GMAT Prop.Accuracy = 1e-12;
+GMAT Prop.MinStep = 0.001;
+GMAT Prop.MaxStep = 60;
+GMAT Prop.MaxStepAttempts = 50;
+
+%----------------------------------------
+%---------- Target-centered LVLH: X=radial, Y=along-track (V-bar), Z=cross-track
+%----------------------------------------
+Create CoordinateSystem TgtLVLH;
+GMAT TgtLVLH.Origin = Tgt;
+GMAT TgtLVLH.Axes = ObjectReferenced;
+GMAT TgtLVLH.XAxis = R;
+GMAT TgtLVLH.ZAxis = N;
+GMAT TgtLVLH.Primary = Earth;
+GMAT TgtLVLH.Secondary = Tgt;
+
+%----------------------------------------
+%---------- Report relative state (chaser expressed in target LVLH)
+%----------------------------------------
+Create ReportFile Rep;
+GMAT Rep.Filename = 'PassiveSafety.txt';
+GMAT Rep.WriteHeaders = true;
+GMAT Rep.Add = {Chaser.ElapsedSecs, Chaser.TgtLVLH.X, Chaser.TgtLVLH.Y, Chaser.TgtLVLH.Z, Tgt.Earth.SMA, Chaser.Earth.SMA};
+
+BeginMissionSequence;
+Propagate Prop(Tgt, Chaser) {Chaser.ElapsedDays = 1};

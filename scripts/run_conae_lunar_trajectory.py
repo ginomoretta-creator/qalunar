@@ -43,7 +43,7 @@ N_PHASE1 = 6
 APO_TARGET_KM = 370_000.0
 ENCOUNTER_EPOCH = "24 Jan 2026 12:00:00.000"   # +23.5 d -> 13,051 km perilune (XE 3.5)
 BRAKE_S = 90_000.0                              # anti-tangential capture window
-POST_COAST_S = 345_600.0                        # ~4 d: trace the bound lunar orbit
+POST_COAST_S = 1_100_000.0                      # ~12.7 d (~6 revs of the ~2.1 d orbit): show stability
 
 
 def build_script(report: str) -> str:
@@ -139,6 +139,38 @@ Mile.Filename = 'conae_lunar_milestones.txt';
 Mile.Precision = 10;
 Mile.WriteHeaders = false;
 
+Create OrbitView EarthView;
+EarthView.SolverIterations = Current;
+EarthView.UpperLeft = [0.01 0.01];
+EarthView.Size = [0.6 0.95];
+EarthView.Add = {{Sat, Earth, Luna}};
+EarthView.CoordinateSystem = EarthMJ2000Eq;
+EarthView.DrawObject = [true true true];
+EarthView.ViewPointReference = Earth;
+EarthView.ViewPointVector = [0 0 1100000];
+EarthView.ViewDirection = Earth;
+EarthView.ViewScaleFactor = 1;
+EarthView.ViewUpCoordinateSystem = EarthMJ2000Eq;
+EarthView.ViewUpAxis = X;
+EarthView.Axes = On;
+EarthView.XYPlane = On;
+
+Create OrbitView MoonViewPort;
+MoonViewPort.SolverIterations = Current;
+MoonViewPort.UpperLeft = [0.62 0.01];
+MoonViewPort.Size = [0.37 0.95];
+MoonViewPort.Add = {{Sat, Luna}};
+MoonViewPort.CoordinateSystem = MoonView;
+MoonViewPort.DrawObject = [true true];
+MoonViewPort.ViewPointReference = Luna;
+MoonViewPort.ViewPointVector = [0 0 120000];
+MoonViewPort.ViewDirection = Luna;
+MoonViewPort.ViewScaleFactor = 1;
+MoonViewPort.ViewUpCoordinateSystem = MoonView;
+MoonViewPort.ViewUpAxis = X;
+MoonViewPort.Axes = On;
+MoonViewPort.XYPlane = Off;
+
 Create Variable goflag niter;
 
 BeginMissionSequence;
@@ -186,7 +218,13 @@ While goflag > 0.5
 EndWhile
 Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
 
-% --- Phase 3: anti-tangential braking (Moon -V) capture ---
+% --- coast to the encounter periselene (brake AT periapsis, not on infall) ---
+Propagate Prop(Sat) {{Sat.Luna.Periapsis, Sat.ElapsedSecs = 400000}};
+
+% --- Phase 3: anti-tangential braking (Moon -V) capture at periselene.
+% Braking at periselene is Oberth-efficient AND preserves/raises the perilune,
+% giving a bound orbit whose perilune stays well above the surface (a brake
+% begun at SOI entry instead drags the perilune sub-surface -> impact). ---
 BeginFiniteBurn Brake(Sat);
 Propagate Prop(Sat) {{Sat.ElapsedSecs = {BRAKE_S:.1f}}};
 EndFiniteBurn Brake(Sat);
@@ -306,7 +344,18 @@ def _plot(data: np.ndarray) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--replot", action="store_true")
+    ap.add_argument("--viz", action="store_true",
+                    help="write the GMAT mission script (with OrbitViews) to "
+                         "figures/conae_lunar_mission.script for the GMAT GUI; "
+                         "no GMAT run")
     args = ap.parse_args()
+    if args.viz:
+        FIG_DIR.mkdir(parents=True, exist_ok=True)
+        out = FIG_DIR / "conae_lunar_mission.script"
+        out.write_text(build_script("conae_lunar_ephem.txt"), encoding="ascii")
+        print(f"  GMAT mission script written to {out}")
+        print(f'  open in GMAT:  GMAT.exe --run "{out}"')
+        return
     cache = FIG_DIR / "conae_lunar_trajectory.npz"
     if args.replot:
         if not cache.exists():

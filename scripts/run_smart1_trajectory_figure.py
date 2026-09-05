@@ -47,6 +47,11 @@ C_CAPTURE = "#d9531e"     # burnt orange -- lunar braking / capture
 C_FAINT = "#c2c7d0"
 C_TEXT = "#1e2430"
 
+# Capture-braking thrust (only the lunar braking, not the Earth-bound spiral).
+# Scaled up so the anti-tangential schedule removes enough dV to bind the orbit
+# into a stable bound capture rather than a one-pass fly-away.
+CAPTURE_DV_KMS = 0.165     # anti-velocity capture impulse at periselene (km/s), tuned to bind
+
 
 def build_ephem_script(report: str) -> str:
     """Full single-trace mission, logging the position ephemeris each step."""
@@ -120,6 +125,13 @@ Spiral.Thrusters = {{Hall}};
 Create FiniteBurn Brake;
 Brake.Thrusters = {{Brk}};
 
+Create ImpulsiveBurn Cap;
+Cap.CoordinateSystem = Local;
+Cap.Origin = Luna;
+Cap.Axes = VNB;
+Cap.Element1 = {-CAPTURE_DV_KMS:.6f};
+Cap.DecrementMass = false;
+
 Create ForceModel FM;
 FM.CentralBody = Earth;
 FM.PrimaryBodies = {{Earth}};
@@ -162,8 +174,9 @@ While goflag > 0.5
 EndWhile
 EndFiniteBurn Spiral(Sat);
 
-% --- Phase 2: anti-tangential binary-QUBO capture braking ---
-{cap}
+% --- coast to periselene, capture impulse (anti-velocity) at periapsis ---
+Propagate Prop(Sat) {{Sat.Luna.Periapsis, Sat.ElapsedSecs = 300000}};
+Maneuver Cap(Sat);
 
 % --- Phase 3: coast on the resulting bound lunar orbit ---
 Propagate Prop(Sat) {{Sat.ElapsedSecs = {viz.POST_COAST_DAYS * 86400.0:.1f}}};

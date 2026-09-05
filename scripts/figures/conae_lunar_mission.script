@@ -1,0 +1,180 @@
+% Auto-generated: CONAE 12U CubeSat -> Moon, single continuous trace.
+Create CoordinateSystem MoonView;
+MoonView.Origin = Luna;
+MoonView.Axes = MJ2000Eq;
+
+Create Spacecraft Sat;
+Sat.DateFormat = UTCGregorian;
+Sat.Epoch = '24 Jan 2026 12:00:00.000';
+Sat.CoordinateSystem = EarthMJ2000Eq;
+Sat.DisplayStateType = Keplerian;
+Sat.SMA = 41646.000000;
+Sat.ECC = 0.847020121;
+Sat.INC = 39.0;
+Sat.RAAN = 0;
+Sat.AOP = 0;
+Sat.TA = 0;
+Sat.DryMass = 13.0;
+Sat.Tanks = {XeTank};
+Sat.Thrusters = {Hall, Brk};
+Sat.PowerSystem = SolarP;
+
+Create ElectricTank XeTank;
+XeTank.AllowNegativeFuelMass = false;
+XeTank.FuelMass = 3.5;
+
+Create ElectricThruster Hall;
+Hall.CoordinateSystem = Local;
+Hall.Origin = Earth;
+Hall.Axes = VNB;
+Hall.ThrustDirection1 = 1;
+Hall.ThrustDirection2 = 0;
+Hall.ThrustDirection3 = 0;
+Hall.DecrementMass = true;
+Hall.Tank = {XeTank};
+Hall.ThrustModel = ConstantThrustAndIsp;
+Hall.ConstantThrust = 0.040000;
+Hall.Isp = 1200.0;
+Hall.MaximumUsablePower = 2;
+Hall.MinimumUsablePower = 0.01;
+
+Create ElectricThruster Brk;
+Brk.CoordinateSystem = Local;
+Brk.Origin = Luna;
+Brk.Axes = VNB;
+Brk.ThrustDirection1 = -1;
+Brk.ThrustDirection2 = 0;
+Brk.ThrustDirection3 = 0;
+Brk.DecrementMass = true;
+Brk.Tank = {XeTank};
+Brk.ThrustModel = ConstantThrustAndIsp;
+Brk.ConstantThrust = 0.040000;
+Brk.Isp = 1200.0;
+Brk.MaximumUsablePower = 2;
+Brk.MinimumUsablePower = 0.01;
+
+Create SolarPowerSystem SolarP;
+SolarP.InitialMaxPower = 1.9;
+SolarP.AnnualDecayRate = 0;
+SolarP.Margin = 0;
+SolarP.ShadowModel = 'None';
+
+Create FiniteBurn Spiral;
+Spiral.Thrusters = {Hall};
+Create FiniteBurn Brake;
+Brake.Thrusters = {Brk};
+
+Create ForceModel FM;
+FM.CentralBody = Earth;
+FM.PrimaryBodies = {Earth};
+FM.GravityField.Earth.Degree = 4;
+FM.GravityField.Earth.Order = 4;
+FM.PointMasses = {Luna, Sun};
+
+Create Propagator Prop;
+Prop.FM = FM;
+Prop.Type = RungeKutta89;
+Prop.InitialStepSize = 60;
+Prop.Accuracy = 1e-9;
+Prop.MinStep = 0;
+Prop.MaxStep = 1800;
+
+Create ReportFile Eph;
+Eph.Filename = 'conae_lunar_ephem.txt';
+Eph.Precision = 10;
+Eph.WriteHeaders = false;
+Eph.Add = {Sat.ElapsedDays, Sat.EarthMJ2000Eq.X, Sat.EarthMJ2000Eq.Y, Sat.EarthMJ2000Eq.Z, Sat.MoonView.X, Sat.MoonView.Y, Sat.MoonView.Z};
+
+Create ReportFile Mile;
+Mile.Filename = 'conae_lunar_milestones.txt';
+Mile.Precision = 10;
+Mile.WriteHeaders = false;
+
+Create OrbitView EarthView;
+EarthView.SolverIterations = Current;
+EarthView.UpperLeft = [0.01 0.01];
+EarthView.Size = [0.6 0.95];
+EarthView.Add = {Sat, Earth, Luna};
+EarthView.CoordinateSystem = EarthMJ2000Eq;
+EarthView.DrawObject = [true true true];
+EarthView.ViewPointReference = Earth;
+EarthView.ViewPointVector = [0 0 1100000];
+EarthView.ViewDirection = Earth;
+EarthView.ViewScaleFactor = 1;
+EarthView.ViewUpCoordinateSystem = EarthMJ2000Eq;
+EarthView.ViewUpAxis = X;
+EarthView.Axes = On;
+EarthView.XYPlane = On;
+
+Create OrbitView MoonViewPort;
+MoonViewPort.SolverIterations = Current;
+MoonViewPort.UpperLeft = [0.62 0.01];
+MoonViewPort.Size = [0.37 0.95];
+MoonViewPort.Add = {Sat, Luna};
+MoonViewPort.CoordinateSystem = MoonView;
+MoonViewPort.DrawObject = [true true];
+MoonViewPort.ViewPointReference = Luna;
+MoonViewPort.ViewPointVector = [0 0 120000];
+MoonViewPort.ViewDirection = Luna;
+MoonViewPort.ViewScaleFactor = 1;
+MoonViewPort.ViewUpCoordinateSystem = MoonView;
+MoonViewPort.ViewUpAxis = X;
+MoonViewPort.Axes = On;
+MoonViewPort.XYPlane = Off;
+
+Create Variable goflag niter;
+
+BeginMissionSequence;
+
+% --- Phase 1: raise perigee with apogee burns ---
+For niter = 1:6;
+   Propagate Prop(Sat) {Sat.Earth.Apoapsis};
+   BeginFiniteBurn Spiral(Sat);
+   Propagate Prop(Sat) {Sat.ElapsedSecs = 2626.0};
+   EndFiniteBurn Spiral(Sat);
+EndFor;
+Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
+
+% --- Phase 2: continuous spiral until apogee reaches lunar distance ---
+BeginFiniteBurn Spiral(Sat);
+goflag = 1;
+niter = 0;
+While goflag > 0.5
+   Propagate Prop(Sat) {Sat.ElapsedSecs = 14400};
+   niter = niter + 1;
+   goflag = 0;
+   If Sat.Earth.RadApo < 370000.0
+      goflag = 1;
+   EndIf
+   If niter > 90
+      goflag = 0;
+   EndIf
+EndWhile
+EndFiniteBurn Spiral(Sat);
+Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
+
+% --- coast to the lunar encounter (stop at SOI entry) ---
+goflag = 1;
+niter = 0;
+While goflag > 0.5
+   Propagate Prop(Sat) {Sat.ElapsedSecs = 10800};
+   niter = niter + 1;
+   goflag = 0;
+   If Sat.Luna.RMAG > 66100.0
+      goflag = 1;
+   EndIf
+   If niter > 200
+      goflag = 0;
+   EndIf
+EndWhile
+Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
+
+% --- Phase 3: anti-tangential braking (Moon -V) capture ---
+BeginFiniteBurn Brake(Sat);
+Propagate Prop(Sat) {Sat.ElapsedSecs = 90000.0};
+EndFiniteBurn Brake(Sat);
+Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
+
+% --- short post-capture coast ---
+Propagate Prop(Sat) {Sat.ElapsedSecs = 345600.0};
+Report Mile Sat.ElapsedDays Sat.Earth.RadPer Sat.Earth.RadApo Sat.Luna.RMAG Sat.Luna.Energy Sat.XeTank.FuelMass;
