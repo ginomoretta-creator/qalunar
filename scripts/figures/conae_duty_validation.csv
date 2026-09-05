@@ -1,0 +1,16 @@
+key,value
+penalty,272.9190401399992
+coefficient_range,5.5
+budget_met,True
+matches_top_k,True
+energy,-401.8355234399987
+energy_top_k,-401.8355234399987
+num_reads,5000
+seed,1
+n_slots,24
+duty_budget,0.15
+k,3
+duty_flown,0.125
+wet_mass_kg,16.5
+gain_predicted_km,401.8355
+gain_measured_km,407.3668

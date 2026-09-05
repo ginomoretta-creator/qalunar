@@ -42,11 +42,20 @@ MU_EARTH = 398_600.4418            # km^3/s^2
 EARTH_RADIUS_KM = 6_378.137
 
 # CONAE reference ellipse (representative; not the true mission orbit).
-SMA_KM = 41_646.0
-ECC = 0.847020121
+# The apogee radius is the CONAE value. The injection perigee is set to a
+# realistic upper-stage transfer altitude: the earlier a = 41646 km,
+# e = 0.847 pair put the perigee at 6371 km radius, i.e. 7 km *below* the
+# equatorial surface, where no vehicle survives a pass and no atmosphere
+# model is defined. Changing it moves a by 0.3% and e by 0.7%.
+PERIGEE_ALT_KM = 250.0
+APOGEE_RADIUS_KM = 76_922.0
+RP_KM = EARTH_RADIUS_KM + PERIGEE_ALT_KM
+SMA_KM = 0.5 * (RP_KM + APOGEE_RADIUS_KM)
+ECC = (APOGEE_RADIUS_KM - RP_KM) / (APOGEE_RADIUS_KM + RP_KM)
 INC_DEG = 39.0
 RAAN_DEG = 0.0
 AOP_DEG = 0.0
+TA0_DEG = 150.0                    # injection true anomaly (paper Table 3)
 
 # 40 mN Hall thruster on the 12U bus: 11 kg platform + propulsion system =
 # 13 kg dry, plus the xenon loaded for the whole cislunar mission. Phase 1
@@ -60,11 +69,10 @@ WET_MASS_KG = DRY_MASS_KG + XE_LOADED_KG
 OPERATING_POWER_W = 493.5          # thruster operating power (thruster table)
 G0 = 9.80665
 
-# Atmospheric drag in the truth model. Off by default because the reference
-# ellipse has its perigee at 6371 km radius (below the equatorial surface),
-# where any atmosphere model is meaningless; enable once the reference
-# perigee is raised to a survivable altitude.
-DRAG = False
+# Atmospheric drag in the truth model (MSISE-90, mean solar activity). On:
+# with a 250 km injection perigee the per-pass decay competes with the
+# thrust-induced gain and must be in the truth model.
+DRAG = True
 APOGEE_BURN_S = 2626.0             # per-apogee burn duration (Table: 40 mN HET)
 N_APOGEES = 5                      # 5 x 8 m/s = 40 m/s total (RQ-MIS-01)
 
@@ -136,10 +144,15 @@ def _sat_header(thrust_n: float, has_burn: bool, ta_deg: float) -> list[str]:
             "Hall.MinimumUsablePower = 0.01;",
             "",
             "Create SolarPowerSystem SolarP;",
+            # GMAT's power system gates the thruster on sunlight (DualCone
+            # eclipses) but does not model a battery: the 493.5 W burn is drawn
+            # from stored energy, and the orbit-averaged power budget
+            # (RQ-MIS-05) is book-kept analytically from burn time and period.
             "SolarP.InitialMaxPower = 2;",
             "SolarP.AnnualDecayRate = 0;",
             "SolarP.Margin = 0;",
-            "SolarP.ShadowModel = 'None';",
+            "SolarP.ShadowModel = 'DualCone';",
+            "SolarP.ShadowBodies = {Earth};",
             "",
             "Create FiniteBurn Burn;",
             "Burn.Thrusters = {Hall};",
@@ -179,11 +192,16 @@ def _run(script_text: str, report: str, console: Path) -> np.ndarray:
                                      encoding="ascii") as fh:
         fh.write(script_text)
         path = Path(fh.name)
+    # One log file per run: concurrent GmatConsole instances that share the
+    # default GmatLog.txt fail at start-up ("specified log file is not a
+    # valid log file").
+    log = path.with_suffix(".log")
     try:
-        proc = subprocess.run([str(console), str(path)], cwd=str(console.parent),
+        proc = subprocess.run([str(console), "-l", str(log), "-r", str(path)],
+                              cwd=str(console.parent),
                               capture_output=True, text=True, timeout=600)
         raw = (proc.stdout or "") + (proc.stderr or "")
-        if not re.search(r"Mission run completed", raw):
+        if proc.returncode != 0 or not re.search(r"Mission run completed", raw):
             raise RuntimeError("GMAT failed:\n" + "\n".join(raw.splitlines()[-18:]))
         for d in (console.parent.parent / "output", console.parent / "output",
                   console.parent):
@@ -196,12 +214,13 @@ def _run(script_text: str, report: str, console: Path) -> np.ndarray:
         raise FileNotFoundError(report)
     finally:
         path.unlink(missing_ok=True)
+        log.unlink(missing_ok=True)
 
 
 def _coast_profile_script(report: str) -> str:
     dt = _period() / N_SLOTS
     lines = ["% CONAE coast profile (per-slot TA / speed / perigee)", ""]
-    lines += _sat_header(0.0, False, 0.0)
+    lines += _sat_header(0.0, False, TA0_DEG)
     lines += [f"Create ReportFile Rep;", f"Rep.Filename = '{report}';",
               "Rep.Precision = 12;", "Rep.WriteHeaders = false;", "",
               "BeginMissionSequence;", ""]
@@ -215,7 +234,7 @@ def _coast_profile_script(report: str) -> str:
 def _slot_fly_script(schedule: np.ndarray, report: str) -> str:
     dt = _period() / schedule.size
     lines = ["% CONAE duty-cycle slot schedule", ""]
-    lines += _sat_header(THRUST_N, bool(schedule.any()), 0.0)
+    lines += _sat_header(THRUST_N, bool(schedule.any()), TA0_DEG)
     lines += [f"Create ReportFile Rep;", f"Rep.Filename = '{report}';",
               "Rep.Precision = 12;", "Rep.WriteHeaders = false;", "",
               "BeginMissionSequence;", ""]
@@ -237,14 +256,15 @@ def _slot_fly_script(schedule: np.ndarray, report: str) -> str:
 
 
 def _climb_script(report: str) -> str:
-    """Fire the 40 mN HET at each of N_APOGEES apogees; report perigee each time."""
+    """Fire the 40 mN HET at each of N_APOGEES apogees; report after each burn
+    and, at the end, at the following perigee passage (true altitude)."""
     lines = ["% CONAE multi-apogee perigee climb", ""]
-    lines += _sat_header(THRUST_N, True, 0.0)
+    lines += _sat_header(THRUST_N, True, TA0_DEG)
     lines += [f"Create ReportFile Rep;", f"Rep.Filename = '{report}';",
               "Rep.Precision = 12;", "Rep.WriteHeaders = false;", "",
               "BeginMissionSequence;", "",
               "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG "
-              "Sat.XeTank.FuelMass Sat.ElapsedDays;"]
+              "Sat.XeTank.FuelMass Sat.ElapsedDays Sat.Earth.Altitude;"]
     for _ in range(N_APOGEES):
         lines += [
             "Propagate Prop(Sat) {Sat.Earth.Apoapsis};",
@@ -252,8 +272,14 @@ def _climb_script(report: str) -> str:
             f"Propagate Prop(Sat) {{Sat.ElapsedSecs = {APOGEE_BURN_S:.4f}}};",
             "EndFiniteBurn Burn(Sat);",
             "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG "
-            "Sat.XeTank.FuelMass Sat.ElapsedDays;",
+            "Sat.XeTank.FuelMass Sat.ElapsedDays Sat.Earth.Altitude;",
         ]
+    # Final perigee passage: the altitude actually flown through.
+    lines += [
+        "Propagate Prop(Sat) {Sat.Earth.Periapsis};",
+        "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG "
+        "Sat.XeTank.FuelMass Sat.ElapsedDays Sat.Earth.Altitude;",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -276,8 +302,10 @@ def main() -> None:
     print("=" * 90)
     print("  CONAE 12U CubeSat: duty-cycle-limited perigee raising (GMAT + binary QUBO)")
     print("=" * 90)
-    print(f"  reference ellipse  a={SMA_KM:.0f} km  e={ECC:.3f}  "
-          f"rp={rp0:.0f} km  ra={ra0:.0f} km  period={period/3600:.2f} h")
+    print(f"  reference ellipse  a={SMA_KM:.0f} km  e={ECC:.4f}  "
+          f"rp={rp0:.0f} km ({rp0-EARTH_RADIUS_KM:.0f} km alt)  ra={ra0:.0f} km  "
+          f"period={period/3600:.2f} h  injection TA={TA0_DEG:.0f} deg  "
+          f"drag={'on' if DRAG else 'off'}")
     slot_s = period / N_SLOTS
     print(f"  40 mN HET, Isp {ISP_S:.0f} s, {WET_MASS_KG:.1f} kg wet at start of "
           f"Phase 1; duty budget {DUTY_CYCLE:.0%} -> K = floor({DUTY_CYCLE}*{N_SLOTS})"
@@ -334,7 +362,9 @@ def main() -> None:
 
     # ---- multi-apogee perigee climb ----
     print(f"  flying the {N_APOGEES}-apogee perigee climb in GMAT ...", flush=True)
-    climb = _run(_climb_script("conae_climb.txt"), "conae_climb.txt", console)
+    climb_all = _run(_climb_script("conae_climb.txt"), "conae_climb.txt", console)
+    climb = climb_all[:N_APOGEES + 1]          # rows after each apogee burn
+    final_perigee_alt = float(climb_all[-1, 5])  # altitude at the last perigee pass
     rper_climb = climb[:, 0]
     fuel_climb = climb[:, 3]
     m_climb = DRY_MASS_KG + fuel_climb
@@ -347,7 +377,9 @@ def main() -> None:
           f"measured dv {dv_total:.1f} m/s total "
           f"({dv_pass.min():.2f}-{dv_pass.max():.2f} m/s per pass; RQ-MIS-02 needs "
           f">= 8), xenon {fuel_climb[0]-fuel_climb[-1]:.4f} kg, "
-          f"{climb[-1, 4]:.2f} d\n")
+          f"{climb[-1, 4]:.2f} d; orbit-averaged power per pass "
+          f"{OPERATING_POWER_W*APOGEE_BURN_S/period:.1f} W; altitude at the "
+          f"final perigee passage {final_perigee_alt:.0f} km\n")
 
     _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb, dv_pass, fuel_climb,
                qinfo, gain_predicted, gain_measured)

@@ -451,9 +451,13 @@ def _run_script(script_text: str, report_name: str, cfg: GmatOracleConfig) -> st
         fh.write(script_text)
         script_path = Path(fh.name)
 
+    # A private log file per run: concurrent GmatConsole instances that share
+    # the default GmatLog.txt fail at start-up ("specified log file is not a
+    # valid log file"), which made the parallel finite-difference runs flaky.
+    log_path = script_path.with_suffix(".log")
     try:
         proc = subprocess.run(
-            [str(console), str(script_path)],
+            [str(console), "-l", str(log_path), "-r", str(script_path)],
             cwd=str(bin_dir),
             capture_output=True,
             text=True,
@@ -494,10 +498,11 @@ def _run_script(script_text: str, report_name: str, cfg: GmatOracleConfig) -> st
             f"GMAT run completed but report {report_name!r} was not found"
         )
     finally:
-        try:
-            script_path.unlink()
-        except OSError:
-            pass
+        for p in (script_path, log_path):
+            try:
+                p.unlink()
+            except OSError:
+                pass
 
 
 def propagate_schedule_gmat(

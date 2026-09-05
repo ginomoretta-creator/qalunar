@@ -1,0 +1,3 @@
+pass,epoch,elapsed_days,a_km,e,period_h,apogee_km,perigee_alt_km,fuel_kg,dv_pass_m_s,burn_s,duty,power_w,regime,schedule,matches_top_k,gain_pred_km,gain_meas_km,slot_burn_fraction_min
+1,08 Jan 2026 00:01:50.013,1.001,42524.4,0.832468,24.242,77924.5,746.1,3.447030,5.978,2572.2,0.03000,14.80,cardinality,0000110000,True,985.49,992.45,0.000
+2,09 Jan 2026 00:29:55.684,2.021,43049.1,0.834568,24.692,78976.6,743.6,3.438402,6.175,2618.1,0.03000,14.80,cardinality,0000110000,True,1038.90,1046.57,-0.000
