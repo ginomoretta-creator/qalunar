@@ -357,7 +357,7 @@ def main() -> None:
     fields = ["pass", "epoch", "elapsed_days", "a_km", "e", "period_h", "apogee_km",
               "perigee_alt_km", "fuel_kg", "dv_pass_m_s", "burn_s", "duty", "power_w",
               "regime", "schedule", "matches_top_k", "gain_pred_km", "gain_meas_km",
-              "slot_burn_fraction_min"]
+              "slot_burn_fraction_min", "x_km", "y_km", "z_km", "vx_km_s", "vy_km_s", "vz_km_s"]
     rows_out = []
     elapsed_total = 0.0
     dv_total = 0.0
@@ -422,6 +422,8 @@ def main() -> None:
             regime=info["regime"], schedule="".join(str(int(b)) for b in q),
             matches_top_k=info.get("matches_top_k"), gain_pred_km=f"{gain_pred:.2f}",
             gain_meas_km=f"{gain_meas:.2f}", slot_burn_fraction_min=f"{burn_frac.min():.3f}",
+            x_km=f"{r[0]:.6f}", y_km=f"{r[1]:.6f}", z_km=f"{r[2]:.6f}",
+            vx_km_s=f"{v[0]:.9f}", vy_km_s=f"{v[1]:.9f}", vz_km_s=f"{v[2]:.9f}",
         )
         rows_out.append(row)
         print(f"  pass {k:3d}  {row['schedule']}  {info['regime'][:11]:11s} "
@@ -443,6 +445,8 @@ def main() -> None:
         "fuel_left_kg": fuel, "K": K, "N_WIN": N_WIN,
         "duty_per_pass": K * slot_frac, "power_w_per_pass": OPERATING_POWER_W * K * slot_frac,
         "final_epoch": epoch,
+        "final_state_eci_km_s": [float(x) for x in np.concatenate([r, v])],
+        "final_fuel_kg": fuel,
     }
     (FIG_DIR / "conae_phase2_binary_summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
