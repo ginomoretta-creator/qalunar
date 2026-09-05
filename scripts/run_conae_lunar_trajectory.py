@@ -36,14 +36,21 @@ EARTH_RADIUS_KM = 6_378.137
 MOON_RADIUS_KM = 1_737.4
 MOON_SOI_KM = 66_100.0
 
-SMA_KM, ECC, INC_DEG = 41_646.0, 0.847020121, 39.0
+# Same reference ellipse as run_conae_duty_cycle: CONAE apogee radius, 250 km
+# injection perigee (the earlier a/e pair put the perigee below the surface).
+PERIGEE_ALT_KM, APOGEE_RADIUS_KM = 250.0, 76_922.0
+_RP = EARTH_RADIUS_KM + PERIGEE_ALT_KM
+SMA_KM = 0.5 * (_RP + APOGEE_RADIUS_KM)
+ECC = (APOGEE_RADIUS_KM - _RP) / (APOGEE_RADIUS_KM + _RP)
+INC_DEG = 39.0
+TA0_DEG = 150.0                                 # injection true anomaly (paper Table 3)
 THRUST_N, ISP_S, DRY_MASS_KG, XE_KG = 0.040, 1200.0, 13.0, 3.5
 APOGEE_BURN_S = 2626.0
-N_PHASE1 = 6
+N_PHASE1 = 5                                    # five apogee passes, as in the text
 APO_TARGET_KM = 370_000.0
 ENCOUNTER_EPOCH = "24 Jan 2026 12:00:00.000"   # +23.5 d -> 13,051 km perilune (XE 3.5)
 BRAKE_S = 90_000.0                              # anti-tangential capture window
-POST_COAST_S = 1_100_000.0                      # ~12.7 d (~6 revs of the ~2.1 d orbit): show stability
+POST_COAST_S = 50.0 * 86400.0                   # 50 d post-capture coast (the stability claim)
 
 
 def build_script(report: str) -> str:
@@ -62,7 +69,7 @@ Sat.ECC = {ECC:.9f};
 Sat.INC = {INC_DEG};
 Sat.RAAN = 0;
 Sat.AOP = 0;
-Sat.TA = 0;
+Sat.TA = {TA0_DEG};
 Sat.DryMass = {DRY_MASS_KG};
 Sat.Tanks = {{XeTank}};
 Sat.Thrusters = {{Hall, Brk}};
@@ -106,7 +113,8 @@ Create SolarPowerSystem SolarP;
 SolarP.InitialMaxPower = 1.9;
 SolarP.AnnualDecayRate = 0;
 SolarP.Margin = 0;
-SolarP.ShadowModel = 'None';
+SolarP.ShadowModel = 'DualCone';
+SolarP.ShadowBodies = {{Earth}};
 
 Create FiniteBurn Spiral;
 Spiral.Thrusters = {{Hall}};
