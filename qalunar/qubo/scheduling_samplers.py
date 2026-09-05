@@ -111,8 +111,14 @@ def sample_kerberos(
     convergence: int = 3,
     qpu_reads: int = 100,
     qpu_sampler: Any | None = None,
+    seed: int | None = 42,
 ) -> SchedulingSampleResult:
     """Sample via the dwave-hybrid Kerberos reference workflow.
+
+    Kerberos is a *classical* local workflow (tabu + simulated annealing on
+    decomposed subproblems) unless a ``qpu_sampler`` is supplied; it is a
+    hybrid-solver proxy, not a quantum result, and is labelled as such in
+    ``backend``.
 
     Kerberos runs three branches in parallel: classical tabu, classical
     simulated annealing, and (optionally) a QPU branch. When
@@ -132,6 +138,8 @@ def sample_kerberos(
         Reads per QPU call (only used when ``qpu_sampler`` is given).
     qpu_sampler : optional
         QPU sampler object. ``None`` runs Kerberos fully classically.
+    seed : int or None
+        Seeds both local branches so the local workflow is reproducible.
     """
     import hybrid as h
 
@@ -140,10 +148,11 @@ def sample_kerberos(
     t0 = time.perf_counter()
     if qpu_sampler is None:
         # Local-only workflow: tabu + simulated annealing branches.
+        seed_kw = {} if seed is None else {"seed": seed}
         iteration = h.RacingBranches(
-            h.InterruptableTabuSampler(),
+            h.InterruptableTabuSampler(**seed_kw),
             h.EnergyImpactDecomposer(size=min(50, qubo.n_vars))
-                | h.SimulatedAnnealingSubproblemSampler()
+                | h.SimulatedAnnealingSubproblemSampler(**seed_kw)
                 | h.SplatComposer(),
         ) | h.ArgMin()
         workflow = h.Loop(iteration, max_iter=max_iter, convergence=convergence)
@@ -174,7 +183,7 @@ def sample_kerberos(
     return SchedulingSampleResult(
         schedule=bits, energy=qubo.energy(bits),
         solve_time=elapsed, backend="kerberos_local",
-        metadata={"max_iter": max_iter, "convergence": convergence},
+        metadata={"max_iter": max_iter, "convergence": convergence, "seed": seed},
     )
 
 
@@ -267,7 +276,10 @@ def sample_leap_hybrid(
 
     best = sample_set.first.sample
     bits = _bitstring_from_sample(best, qubo.n_vars)
-    timing = dict(sample_set.info.get("run_time", {})) if "run_time" in sample_set.info else {}
+    # LeapHybridSampler reports ``run_time`` as a scalar (microseconds),
+    # not a mapping; coercing it with dict() raised TypeError after the
+    # cloud job had already been charged.
+    timing = sample_set.info.get("run_time")
     return SchedulingSampleResult(
         schedule=bits, energy=qubo.energy(bits),
         solve_time=elapsed, backend="leap_hybrid",
@@ -278,6 +290,16 @@ def sample_leap_hybrid(
             "timing": timing,
         },
     )
+
+
+def chain_strength_for(qubo: ThrustSchedulingQubo, multiplier: float = 2.0) -> float:
+    """Chain strength as a multiple of the largest |coefficient| in the QUBO.
+
+    Uses ``max|Q|`` (not ``|max Q|``): a negative coupling of large magnitude
+    would otherwise be ignored and chains could break on it.
+    """
+    scale = max(float(np.abs(qubo.Q).max()), float(np.abs(qubo.linear).max()), 1e-9)
+    return multiplier * scale
 
 
 def sample_dwave_qpu(
@@ -305,9 +327,7 @@ def sample_dwave_qpu(
 
     bqm = _qubo_to_bqm(qubo)
     sampler = EmbeddingComposite(DWaveSampler())
-    chain_strength = chain_strength_multiplier * float(
-        max(abs(qubo.Q.max()), abs(qubo.linear).max(), 1e-9)
-    )
+    chain_strength = chain_strength_for(qubo, chain_strength_multiplier)
 
     t0 = time.perf_counter()
     sample_set = sampler.sample(

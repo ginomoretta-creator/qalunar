@@ -28,9 +28,11 @@ windows back onto the lunar-capture result type used throughout the codebase.
 The Earth-escape Phase 1 (:mod:`qalunar.qubo.earth_escape`) is the dual adapter
 over the same driver.
 
-Stability is monitored via the spacecraft's two-body energy with
-respect to the Moon. The loop runs a fixed number of windows; the orbit is
-reported as captured when the final Moon-relative energy is negative.
+Capture is judged from the spacecraft's two-body energy with respect to the
+Moon *and* its distance: a negative Keplerian energy is only meaningful
+inside the lunar Hill sphere, so ``captured`` requires both. The loop runs
+the full window budget unless ``energy_tol`` is given, in which case it
+stops as soon as the Moon-relative energy drops below that threshold.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from numpy.typing import NDArray
 from qalunar.dynamics.cr3bp import EARTH_MOON_MU, PlanarCR3BP
 from qalunar.qubo.receding_horizon import (
     CentralBody,
+    RecedingHorizonSegment,
     RecedingHorizonWindow,
     solve_receding_horizon,
 )
@@ -59,6 +62,8 @@ __all__ = [
     "solve_lunar_capture_sliding_window",
     "moon_two_body_energy",
     "moon_orbit_apolune_perilune",
+    "moon_hill_radius",
+    "is_captured",
 ]
 
 
@@ -77,6 +82,29 @@ def moon_two_body_energy(
     Negative -> bound orbit; zero -> parabolic; positive -> hyperbolic.
     """
     return CentralBody.moon(mu).two_body_energy(state_synodic)
+
+
+def moon_hill_radius(mu: float = EARTH_MOON_MU) -> float:
+    """Lunar Hill radius in nondimensional units, ``(mu/3)^(1/3)``
+    (about 0.159 LU = 61,500 km)."""
+    return float((mu / 3.0) ** (1.0 / 3.0))
+
+
+def is_captured(
+    state_synodic: NDArray[np.float64],
+    mu: float = EARTH_MOON_MU,
+    distance_limit: float | None = None,
+) -> bool:
+    """Bound to the Moon: negative two-body energy *and* inside the Hill
+    sphere (or ``distance_limit``). A bare energy sign test returns True
+    for states far outside the region where the Moon-relative Keplerian
+    elements mean anything."""
+    moon = CentralBody.moon(mu)
+    limit = moon_hill_radius(mu) if distance_limit is None else distance_limit
+    return bool(
+        moon.two_body_energy(state_synodic) < 0.0
+        and moon.distance(state_synodic) < limit
+    )
 
 
 def moon_orbit_apolune_perilune(
@@ -128,10 +156,14 @@ class LunarCaptureResult:
     total_burns : int
         Total number of active burn slots.
     captured : bool
-        True if the spacecraft ended bound to the Moon
-        (energy < 0).
+        True if the spacecraft ended bound to the Moon: energy < 0 *and*
+        inside the lunar Hill sphere (see :func:`is_captured`).
     full_schedule : (M_total,) ndarray
         Concatenation of all per-window schedules.
+    total_tof : float
+        Elapsed time including free-drift and coast-fallback arcs (nondim).
+    segments : list of RecedingHorizonSegment
+        Every flown piece in order (QUBO windows, drifts, coasts).
     """
 
     windows: list[LunarCaptureWindow] = field(default_factory=list)
@@ -142,6 +174,8 @@ class LunarCaptureResult:
     full_schedule: NDArray[np.int64] = field(
         default_factory=lambda: np.zeros(0, dtype=np.int64)
     )
+    total_tof: float = 0.0
+    segments: list[RecedingHorizonSegment] = field(default_factory=list)
 
     def energy_history(self) -> NDArray[np.float64]:
         """Two-body energy at each window boundary."""
@@ -203,7 +237,7 @@ def solve_lunar_capture_sliding_window(
     n_integration_substeps: int = 60,
     n_truth_substeps: int = 200,
     max_inner_iters: int = 4,
-    energy_tol: float = -1e-5,
+    energy_tol: float | None = None,
     verbose: bool = False,
 ) -> LunarCaptureResult:
     """Capture a hyperbolic flyby into a stable lunar orbit using
@@ -252,17 +286,21 @@ def solve_lunar_capture_sliding_window(
         Pass-through to ``solve_iterative``.
     max_inner_iters : int
         ``max_iters`` passed to each window's ``solve_iterative`` call.
-    energy_tol : float
-        Retained for backward compatibility; the loop runs the full window
-        budget and capture is judged from the final energy sign.
+    energy_tol : float or None
+        Stop braking once the Moon-relative two-body energy is below this
+        value (e.g. ``-1e-5``). ``None`` (default) runs the full window
+        budget, which keeps braking after the orbit is already bound.
     verbose : bool
 
     Returns
     -------
     LunarCaptureResult
     """
-    del energy_tol  # retained for API compatibility; not used as a stop rule
     moon = CentralBody.moon(dynamics.mu)
+    terminate = None
+    if energy_tol is not None:
+        def terminate(state, body, _tol=float(energy_tol)):
+            return bool(body.two_body_energy(state) < _tol)
     rh = solve_receding_horizon(
         dynamics, state0_synodic, sampler,
         body=moon,
@@ -279,7 +317,7 @@ def solve_lunar_capture_sliding_window(
         fuel_weight=fuel_weight,
         action_radius=moon_action_radius,
         drift_t_max=drift_t_max,
-        terminate=None,
+        terminate=terminate,
         n_integration_substeps=n_integration_substeps,
         n_truth_substeps=n_truth_substeps,
         max_inner_iters=max_inner_iters,
@@ -291,8 +329,10 @@ def solve_lunar_capture_sliding_window(
         final_state=rh.final_state,
         total_delta_v=rh.total_delta_v,
         total_burns=rh.total_burns,
-        captured=bool(moon.two_body_energy(rh.final_state) < 0.0),
+        captured=is_captured(rh.final_state, dynamics.mu),
         full_schedule=rh.full_schedule,
+        total_tof=rh.total_tof,
+        segments=list(rh.segments),
     )
     return result
 
@@ -303,11 +343,12 @@ def reconstruct_full_trajectory(
     thrust_magnitude: float,
     n_integration_substeps: int = 200,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Concatenate per-window true trajectories into a single (t, x).
+    """Concatenate the flown timeline into a single (t, x).
 
-    Each window's schedule is propagated against the true CR3BP
-    starting from that window's initial state, and the resulting time
-    series are concatenated.
+    Uses ``result.segments`` when available so free-drift and coast
+    arcs are propagated too (no teleport across the action-radius gate);
+    falls back to window-only concatenation for results built without
+    segments.
     """
     times: list[NDArray[np.float64]] = []
     states: list[NDArray[np.float64]] = []
@@ -318,17 +359,29 @@ def reconstruct_full_trajectory(
         fuel_weight=0.0,
         target_weights=np.array([0.0, 0.0, 1.0, 1.0]),
     )
-    for w in result.windows:
-        # Window length from the iterative result's QUBO discretisation.
-        dt_decision = w.iterative_result.final_qubo.dt_decision
-        t_window = dt_decision * w.iterative_result.final_qubo.n_steps
+    pieces: list[tuple[NDArray[np.float64], float, NDArray[np.int64] | None]] = []
+    if result.segments:
+        for seg in result.segments:
+            sched = (result.windows[seg.window_position].schedule
+                     if seg.kind == "qubo" else None)
+            pieces.append((seg.state_initial, seg.duration, sched))
+    else:
+        for w in result.windows:
+            q = w.iterative_result.final_qubo
+            pieces.append((w.state_initial, q.dt_decision * q.n_steps, w.schedule))
 
-        t_seg, x_seg = propagate_schedule(
-            dynamics, w.state_initial, (0.0, t_window),
-            w.schedule, cfg,
-            n_integration_substeps=n_integration_substeps,
-            return_trajectory=True,
-        )
+    for state_i, t_window, sched in pieces:
+        if sched is None:
+            t_seg, x_seg = dynamics.propagate(
+                state_i, (0.0, t_window), n_steps=n_integration_substeps,
+            )
+        else:
+            t_seg, x_seg = propagate_schedule(
+                dynamics, state_i, (0.0, t_window),
+                sched, cfg,
+                n_integration_substeps=n_integration_substeps,
+                return_trajectory=True,
+            )
         if times:
             t_seg = t_seg + t0
             t_seg = t_seg[1:]

@@ -53,5 +53,8 @@ Thumbs.db
 
 # Project-specific
 outputs/
-figures/
 logs/
+# scripts/figures/ is deliberately tracked: it holds the cached GMAT data
+# (CSV/NPZ/JSON) and the generated .script files the manuscripts' figures
+# are regenerated from. Only scratch reports are excluded.
+scripts/figures/*.txt

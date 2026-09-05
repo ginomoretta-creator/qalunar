@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated manuscript."
+title: "qalunar: naturally-binary QUBO scheduling of duty-cycle-limited electric propulsion for CubeSat cislunar transfers"
+type: software
+version: 0.2.0
+date-released: 2026-09-04
+authors:
+  - family-names: Moretta
+    given-names: Gino Luciano
+    affiliation: "Universidad Nacional de Córdoba; School of Aerospace Engineering, Sapienza Università di Roma"
+  - family-names: Paolozzi
+    given-names: Antonio
+    affiliation: "School of Aerospace Engineering, Sapienza Università di Roma"
+  - family-names: Ortore
+    given-names: Emiliano
+    affiliation: "School of Aerospace Engineering, Sapienza Università di Roma"
+keywords:
+  - quantum annealing
+  - QUBO
+  - CubeSat
+  - electric propulsion
+  - duty cycle
+  - cislunar transfer
+  - GMAT
+preferred-citation:
+  type: article
+  title: "Naturally binary quantum-annealing transcription of duty-cycle-limited electric propulsion: a GMAT-in-the-loop scheduler for CubeSat cislunar transfers"
+  authors:
+    - family-names: Moretta
+      given-names: Gino Luciano
+    - family-names: Paolozzi
+      given-names: Antonio
+    - family-names: Ortore
+      given-names: Emiliano
+  journal: "Metascience in Aerospace"
+  year: 2026
+  notes: "in preparation"

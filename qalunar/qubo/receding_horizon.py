@@ -214,6 +214,24 @@ class RecedingHorizonWindow:
 
 
 @dataclass
+class RecedingHorizonSegment:
+    """One contiguous piece of the flown timeline.
+
+    ``windows`` holds only the QUBO-scheduled arcs; free-drift arcs (outside
+    the action radius) and coast fallbacks (singular STM) advance the state
+    and the clock without a window. ``segments`` records every piece in
+    order so the timeline can be reconstructed without gaps.
+    """
+
+    kind: str                      # "qubo" | "drift" | "coast"
+    t_start: float
+    duration: float
+    state_initial: NDArray[np.float64]
+    state_final: NDArray[np.float64]
+    window_position: int | None = None   # index into ``windows`` for "qubo"
+
+
+@dataclass
 class RecedingHorizonResult:
     """Concatenated result of the generic receding-horizon driver."""
 
@@ -227,6 +245,7 @@ class RecedingHorizonResult:
     full_schedule: NDArray[np.int64] = field(
         default_factory=lambda: np.zeros(0, dtype=np.int64)
     )
+    segments: list[RecedingHorizonSegment] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -333,13 +352,19 @@ def solve_receding_horizon(
                 drift_traj[:, :2] - moon_or_body_pos, axis=1,
             )
             mask_inside = r_drift <= action_radius
+            state_before = state.copy()
             if np.any(mask_inside):
                 idx_in = int(np.argmax(mask_inside))
                 state = drift_traj[idx_in]
-                total_tof += float(t_drift[idx_in])
+                seg_dur = float(t_drift[idx_in])
             else:
                 state = drift_traj[-1]
-                total_tof += drift_t_max
+                seg_dur = float(drift_t_max)
+            result.segments.append(RecedingHorizonSegment(
+                kind="drift", t_start=float(total_tof), duration=seg_dur,
+                state_initial=state_before, state_final=state.copy(),
+            ))
+            total_tof += seg_dur
             if verbose:
                 print(f"  window {w_idx:3d}: drift "
                       f"(r={r_now:.3f} > {action_radius:.3f})")
@@ -383,6 +408,11 @@ def solve_receding_horizon(
             _, traj_seg = dynamics.propagate(
                 state, t_span, n_steps=n_truth_substeps,
             )
+            result.segments.append(RecedingHorizonSegment(
+                kind="coast", t_start=float(total_tof),
+                duration=float(t_window),
+                state_initial=state.copy(), state_final=traj_seg[-1].copy(),
+            ))
             state = traj_seg[-1]
             total_tof += t_window
             continue
@@ -419,6 +449,11 @@ def solve_receding_horizon(
             iterative_result=iter_res,
         ))
         schedule_list.append(iter_res.schedule.copy())
+        result.segments.append(RecedingHorizonSegment(
+            kind="qubo", t_start=float(total_tof), duration=float(t_window),
+            state_initial=state.copy(), state_final=new_state.copy(),
+            window_position=len(result.windows) - 1,
+        ))
         total_tof += t_window
 
         if verbose:

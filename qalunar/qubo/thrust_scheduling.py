@@ -98,8 +98,20 @@ class ThrustSchedulingConfig:
     exclusive : bool
         If ``True``, add a quadratic penalty so that at most one
         channel fires per step (single-engine constraint).
-    exclusion_penalty : float
-        Penalty weight ``P`` for the exclusion constraint.
+    exclusion_penalty : float or None
+        Penalty weight ``P`` for the exclusion constraint. ``None``
+        (default) auto-scales it to twice the largest single-bit energy
+        swing of the physical objective -- the smallest value that makes
+        every violating state strictly worse than a neighbouring feasible
+        one, so the coefficient dynamic range stays as small as the
+        physics allows (a hard-coded 10.0 was ~5e5 times the physics).
+        The value actually used is stored on the returned QUBO.
+    impulse_quadrature : {"midpoint", "left"}
+        Where inside a decision interval the finite burn is collapsed to
+        an impulse when forming ``b_j``. ``"midpoint"`` (default) is
+        second-order in ``dt``; ``"left"`` reproduces the original
+        left-endpoint rectangle rule, whose O(dt) bias survives the
+        thrust-to-zero limit and was being charged to nonlinearity.
     """
 
     thrust_magnitude: float = 0.01
@@ -109,7 +121,8 @@ class ThrustSchedulingConfig:
     target_weights: NDArray[np.float64] | None = None
     thrust_channels: tuple[str, ...] | None = None
     exclusive: bool = False
-    exclusion_penalty: float = 10.0
+    exclusion_penalty: float | None = None
+    impulse_quadrature: str = "midpoint"
 
 
 # ------------------------------------------------------------------
@@ -155,6 +168,8 @@ class ThrustSchedulingQubo:
         without re-passing the config.
     dt_decision : float
         Duration of one decision interval (nondim).
+    exclusion_penalty : float
+        Exclusion penalty actually applied (0 when not exclusive).
     """
 
     Q: NDArray[np.float64]
@@ -170,6 +185,17 @@ class ThrustSchedulingQubo:
     coast_trajectory: NDArray[np.float64]
     thrust_magnitude: float = 0.0
     dt_decision: float = 0.0
+    exclusion_penalty: float = 0.0
+
+    def coefficient_range(self) -> float:
+        """max |coefficient| / min nonzero |coefficient| over the upper
+        triangle of ``Q`` and ``linear`` -- the dynamic range an analog
+        annealer (1-2% coefficient precision) must resolve."""
+        coeffs = np.concatenate([
+            np.abs(self.Q[np.triu_indices(self.n_vars)]), np.abs(self.linear),
+        ])
+        nz = coeffs[coeffs > 0]
+        return float(nz.max() / nz.min()) if nz.size else 1.0
 
     @property
     def n_vars(self) -> int:
@@ -355,6 +381,11 @@ def build_thrust_scheduling_qubo(
         The QUBO with all precomputed data for sampling and analysis.
     """
     cfg = config if config is not None else ThrustSchedulingConfig()
+    if cfg.impulse_quadrature not in ("midpoint", "left"):
+        raise ValueError(
+            f"impulse_quadrature must be 'midpoint' or 'left', "
+            f"got {cfg.impulse_quadrature!r}"
+        )
     state0 = np.asarray(state0, dtype=np.float64)
     target_state = np.asarray(target_state, dtype=np.float64)
 
@@ -426,6 +457,13 @@ def build_thrust_scheduling_qubo(
     B_ctrl = dynamics.jacobian_control()  # (4, 2)
 
     # 2. b_vectors at each (channel, step) along the reference trajectory.
+    #
+    # b_j approximates the convolution  int_{t_i}^{t_i+dt} Phi(tf, s) B u ds
+    # of a constant-thrust interval. The thrust *direction* is frozen at the
+    # interval start (the convention of ``propagate_schedule``), but the
+    # STM is taken at the interval midpoint (second-order midpoint rule)
+    # unless the left-endpoint rule is explicitly requested.
+    half = n_integration_substeps // 2 if cfg.impulse_quadrature == "midpoint" else 0
     b_vectors = np.empty((M, 4))
     for c, direction in enumerate(channels):
         for i in range(N):
@@ -435,7 +473,7 @@ def build_thrust_scheduling_qubo(
                 direction, state_i, cfg.thrust_vector
             )
             u_i = cfg.thrust_magnitude * u_dir
-            phi_0i = stms_full[idx]
+            phi_0i = stms_full[idx + half]
             phi_if = phi_0f @ np.linalg.inv(phi_0i)
             j = c * N + i
             b_vectors[j] = phi_if @ B_ctrl @ u_i * dt
@@ -476,8 +514,18 @@ def build_thrust_scheduling_qubo(
     # ``(j1, j2)`` twice (once via ``Q[j1,j2]`` and once via ``Q[j2,j1]``),
     # we add ``P/2`` on each side so the total energy contribution from
     # the pair is exactly ``P``.
+    P_used = 0.0
     if cfg.exclusive and K > 1:
-        P_half = 0.5 * cfg.exclusion_penalty
+        if cfg.exclusion_penalty is None:
+            # Largest single-bit energy swing of the physical objective:
+            # removing either bit of a violating pair changes the energy
+            # by at most this, so any P above it makes every violating
+            # state strictly worse than a feasible neighbour.
+            swing = np.abs(linear) + np.abs(Q).sum(axis=1)
+            P_used = 2.0 * float(swing.max())
+        else:
+            P_used = float(cfg.exclusion_penalty)
+        P_half = 0.5 * P_used
         for i in range(N):
             for c1 in range(K):
                 for c2 in range(c1 + 1, K):
@@ -500,6 +548,7 @@ def build_thrust_scheduling_qubo(
         coast_trajectory=states_full,
         thrust_magnitude=cfg.thrust_magnitude,
         dt_decision=dt,
+        exclusion_penalty=P_used,
     )
 
 
@@ -597,8 +646,10 @@ class IterativeSchedulingResult:
     true_miss_norm_history : list of float
         ``||true_miss||_2`` at each iteration (one per schedule).
     converged : bool
-        ``True`` if the schedule fixed-point was reached before
-        ``max_iters``.
+        ``True`` only when the loop reached a fixed point (the sampler
+        re-proposed the incumbent) or the improvement fell below ``tol``.
+        A trust-region *rejection* (non-improving candidate) or hitting
+        ``max_iters`` leaves it ``False``; see ``converged_reason``.
     converged_reason : str
         Human-readable termination reason.
     """
@@ -750,7 +801,9 @@ def solve_iterative(
             )
 
         if accept_only_improvement and cand_miss_norm > incumbent_miss_norm:
-            converged = True
+            # A rejected candidate is a stall of the linear model, not a
+            # fixed point: report it as such instead of as convergence.
+            converged = False
             reason = (
                 f"non-improving candidate at iter {it} "
                 f"(cand={cand_miss_norm:.3e} > incumbent="

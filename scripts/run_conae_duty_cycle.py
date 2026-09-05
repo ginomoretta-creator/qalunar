@@ -5,9 +5,9 @@ A power-limited CubeSat electric-propulsion mission analysis: a 40 mN
 Hall-effect thruster raises the perigee of a highly eccentric disposal/transfer
 ellipse by prograde burns at apogee, subject to a thrust window of at most 15%
 of the orbital period (RQ-MIS-03) and an orbit-averaged power budget below
-15 W (RQ-MIS-05). This is the apse-dual of SMART-1's orbit raising: there the
-optimiser fired at perigee to raise apogee (Oberth, dE = v dv); here it must
-fire at apogee to raise perigee.
+15 W (RQ-MIS-05). A tangential impulse at an apsis moves only the opposite
+apsis, so perigee is raised by burning at apogee (and apogee, as on SMART-1,
+by burning at perigee).
 
 Two experiments, both flown in GMAT under real ephemerides:
 
@@ -15,9 +15,10 @@ Two experiments, both flown in GMAT under real ephemerides:
       perigee climbs out of the disposal ellipse toward the operational orbit.
   (b) Duty-cycle slot selection: split one orbit into N equal-time slots,
       measure each slot's perigee-radius gain g_j in GMAT, and a cardinality
-      QUBO (budget K = round(0.15 N)) selects which slots fire. Because a
-      prograde burn raises the perigee most at apogee, the selected slots
-      cluster at apogee -- the discrete-side recovery of the optimal-apse rule.
+      QUBO (budget K = floor(0.15 N), sampled with simulated annealing and
+      cross-checked against the closed-form top-K ground state) selects
+      which slots fire. The selected schedule is then flown back in GMAT so
+      the first-order superposition assumption is checked, not assumed.
 
 Run:  python -m scripts.run_conae_duty_cycle
       python -m scripts.run_conae_duty_cycle --replot   (figure only, no GMAT)
@@ -47,17 +48,29 @@ INC_DEG = 39.0
 RAAN_DEG = 0.0
 AOP_DEG = 0.0
 
-# 40 mN Hall thruster; total mass ~13 kg reproduces 8.05 m/s / 0.0089 kg per
-# 2626 s apogee burn (RQ: 11 kg dry without the propulsion system).
+# 40 mN Hall thruster on the 12U bus: 11 kg platform + propulsion system =
+# 13 kg dry, plus the xenon loaded for the whole cislunar mission. Phase 1
+# therefore flies at the WET mass; the 8.05 m/s-per-apogee figure of the
+# thruster trade (sized at 13 kg) is not reachable in 2626 s at 16.5 kg.
 THRUST_N = 0.040
 ISP_S = 1200.0
-TOTAL_MASS_KG = 13.0
+DRY_MASS_KG = 13.0
+XE_LOADED_KG = 3.5
+WET_MASS_KG = DRY_MASS_KG + XE_LOADED_KG
+OPERATING_POWER_W = 493.5          # thruster operating power (thruster table)
+G0 = 9.80665
+
+# Atmospheric drag in the truth model. Off by default because the reference
+# ellipse has its perigee at 6371 km radius (below the equatorial surface),
+# where any atmosphere model is meaningless; enable once the reference
+# perigee is raised to a survivable altitude.
+DRAG = False
 APOGEE_BURN_S = 2626.0             # per-apogee burn duration (Table: 40 mN HET)
 N_APOGEES = 5                      # 5 x 8 m/s = 40 m/s total (RQ-MIS-01)
 
 N_SLOTS = 24
 DUTY_CYCLE = 0.15                  # RQ-MIS-03: <= 15% of the period
-N_BURNS = round(DUTY_CYCLE * N_SLOTS)
+N_BURNS = int(np.floor(DUTY_CYCLE * N_SLOTS))   # a ceiling: floor, never round
 
 FIG_DIR = Path(__file__).resolve().parent / "figures"
 
@@ -93,8 +106,10 @@ def _sat_header(thrust_n: float, has_burn: bool, ta_deg: float) -> list[str]:
         f"Sat.RAAN = {RAAN_DEG};",
         f"Sat.AOP = {AOP_DEG};",
         f"Sat.TA = {ta_deg};",
-        f"Sat.DryMass = {TOTAL_MASS_KG};",
+        f"Sat.DryMass = {DRY_MASS_KG};",
     ]
+    if DRAG:
+        lines += ["Sat.Cd = 2.2;", "Sat.DragArea = 0.12;"]
     if has_burn:
         lines += [
             "Sat.Tanks = {XeTank};",
@@ -103,7 +118,7 @@ def _sat_header(thrust_n: float, has_burn: bool, ta_deg: float) -> list[str]:
             "",
             "Create ElectricTank XeTank;",
             "XeTank.AllowNegativeFuelMass = false;",
-            "XeTank.FuelMass = 0.5;",
+            f"XeTank.FuelMass = {XE_LOADED_KG};",
             "",
             "Create ElectricThruster Hall;",
             "Hall.CoordinateSystem = Local;",
@@ -137,6 +152,15 @@ def _sat_header(thrust_n: float, has_burn: bool, ta_deg: float) -> list[str]:
         "FM.GravityField.Earth.Degree = 4;",
         "FM.GravityField.Earth.Order = 4;",
         "FM.PointMasses = {Luna, Sun};",
+    ]
+    if DRAG:
+        lines += [
+            "FM.Drag.AtmosphereModel = 'MSISE90';",
+            "FM.Drag.F107 = 150;",
+            "FM.Drag.F107A = 150;",
+            "FM.Drag.MagneticIndex = 3;",
+        ]
+    lines += [
         "",
         "Create Propagator Prop;",
         "Prop.FM = FM;",
@@ -219,14 +243,16 @@ def _climb_script(report: str) -> str:
     lines += [f"Create ReportFile Rep;", f"Rep.Filename = '{report}';",
               "Rep.Precision = 12;", "Rep.WriteHeaders = false;", "",
               "BeginMissionSequence;", "",
-              "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG;"]
+              "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG "
+              "Sat.XeTank.FuelMass Sat.ElapsedDays;"]
     for _ in range(N_APOGEES):
         lines += [
             "Propagate Prop(Sat) {Sat.Earth.Apoapsis};",
             "BeginFiniteBurn Burn(Sat);",
             f"Propagate Prop(Sat) {{Sat.ElapsedSecs = {APOGEE_BURN_S:.4f}}};",
             "EndFiniteBurn Burn(Sat);",
-            "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG;",
+            "Report Rep Sat.Earth.RadPer Sat.Earth.RadApo Sat.ECI.VMAG "
+            "Sat.XeTank.FuelMass Sat.ElapsedDays;",
         ]
     return "\n".join(lines) + "\n"
 
@@ -252,8 +278,12 @@ def main() -> None:
     print("=" * 90)
     print(f"  reference ellipse  a={SMA_KM:.0f} km  e={ECC:.3f}  "
           f"rp={rp0:.0f} km  ra={ra0:.0f} km  period={period/3600:.2f} h")
-    print(f"  40 mN HET, Isp {ISP_S:.0f} s, ~{TOTAL_MASS_KG:.0f} kg; duty "
-          f"{DUTY_CYCLE:.0%} -> K = {N_BURNS} of {N_SLOTS} slots\n")
+    slot_s = period / N_SLOTS
+    print(f"  40 mN HET, Isp {ISP_S:.0f} s, {WET_MASS_KG:.1f} kg wet at start of "
+          f"Phase 1; duty budget {DUTY_CYCLE:.0%} -> K = floor({DUTY_CYCLE}*{N_SLOTS})"
+          f" = {N_BURNS} slots = {N_BURNS/N_SLOTS:.1%} of the period "
+          f"({N_BURNS*slot_s:.0f} s; orbit-averaged power "
+          f"{OPERATING_POWER_W*N_BURNS*slot_s/period:.1f} W)\n")
 
     # ---- (b) per-slot profile + perigee-gain g_j ----
     prof = _run(_coast_profile_script("conae_prof.txt"), "conae_prof.txt", console)
@@ -280,29 +310,68 @@ def main() -> None:
           f"v {v_kms[apo_slot]:.2f} km/s): {g[apo_slot]:.1f} km vs "
           f"{g.min():.1f} km at perigee\n")
 
-    # cardinality QUBO: top-K perigee-gain slots (= the exact ground state)
-    order = np.argsort(g)[::-1]
-    q_qubo = np.zeros(N_SLOTS, dtype=np.int64)
-    q_qubo[order[:N_BURNS]] = 1
+    # Cardinality QUBO, sampled with simulated annealing and cross-checked
+    # against the closed-form top-K ground state (for a linear objective the
+    # two must coincide; the QUBO form is what an annealer ingests).
+    from qalunar.qubo.cardinality import solve_cardinality_qubo
+    q_qubo, qinfo = solve_cardinality_qubo(g, N_BURNS, num_reads=5000, seed=1)
     on = np.flatnonzero(q_qubo)
-    print(f"  QUBO selected {int(q_qubo.sum())} slots, true anomalies "
-          f"{sorted(f'{t:+.0f}' for t in (ta_deg[on]))} deg (180 = apogee)\n")
+    print(f"  QUBO (SA, {qinfo['num_reads']} reads, penalty {qinfo['penalty']:.3g}, "
+          f"coefficient range {qinfo['coefficient_range']:.2g}) selected "
+          f"{int(q_qubo.sum())} slots, true anomalies "
+          f"{sorted(f'{t:+.0f}' for t in (ta_deg[on]))} deg (180 = apogee); "
+          f"matches top-K: {qinfo['matches_top_k']}")
+
+    # Validate the chosen combination in the truth model: the QUBO assumed
+    # the per-slot gains superpose; measure how well they actually do.
+    rper_sched = float(_run(_slot_fly_script(q_qubo, "conae_sched.txt"),
+                            "conae_sched.txt", console)[-1][0])
+    gain_predicted = float(g[q_qubo == 1].sum())
+    gain_measured = rper_sched - rper_coast
+    print(f"  flown back in GMAT: perigee gain {gain_measured:.1f} km measured vs "
+          f"{gain_predicted:.1f} km predicted by superposition "
+          f"({100*(gain_measured-gain_predicted)/gain_predicted:+.1f}%)\n")
 
     # ---- multi-apogee perigee climb ----
     print(f"  flying the {N_APOGEES}-apogee perigee climb in GMAT ...", flush=True)
     climb = _run(_climb_script("conae_climb.txt"), "conae_climb.txt", console)
     rper_climb = climb[:, 0]
-    dv_total = N_APOGEES * 8.0
+    fuel_climb = climb[:, 3]
+    m_climb = DRY_MASS_KG + fuel_climb
+    # Delta-v measured from the truth model's propellant depletion (rocket
+    # equation), never assumed from the thruster table.
+    dv_pass = ISP_S * G0 * np.log(m_climb[:-1] / m_climb[1:])
+    dv_total = float(dv_pass.sum())
     print(f"  perigee {rper_climb[0]:.0f} -> {rper_climb[-1]:.0f} km "
-          f"(+{rper_climb[-1]-rper_climb[0]:.0f} km) over {N_APOGEES} apogees, "
-          f"~{dv_total:.0f} m/s total\n")
+          f"(+{rper_climb[-1]-rper_climb[0]:.0f} km) over {N_APOGEES} apogees; "
+          f"measured dv {dv_total:.1f} m/s total "
+          f"({dv_pass.min():.2f}-{dv_pass.max():.2f} m/s per pass; RQ-MIS-02 needs "
+          f">= 8), xenon {fuel_climb[0]-fuel_climb[-1]:.4f} kg, "
+          f"{climb[-1, 4]:.2f} d\n")
 
-    _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb)
-    _draw(ta_deg, g, q_qubo, rper_climb)
+    _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb, dv_pass, fuel_climb,
+               qinfo, gain_predicted, gain_measured)
+    _draw(ta_deg, g, q_qubo, rper_climb, dv_pass)
 
 
-def _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb) -> None:
+def _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb, dv_pass=None,
+               fuel_climb=None, qinfo=None, gain_predicted=None,
+               gain_measured=None) -> None:
     FIG_DIR.mkdir(parents=True, exist_ok=True)
+    if qinfo is not None:
+        with (FIG_DIR / "conae_duty_validation.csv").open(
+                "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["key", "value"])
+            for k, v in qinfo.items():
+                w.writerow([k, v])
+            w.writerow(["n_slots", N_SLOTS])
+            w.writerow(["duty_budget", DUTY_CYCLE])
+            w.writerow(["k", N_BURNS])
+            w.writerow(["duty_flown", N_BURNS / N_SLOTS])
+            w.writerow(["wet_mass_kg", WET_MASS_KG])
+            w.writerow(["gain_predicted_km", f"{gain_predicted:.4f}"])
+            w.writerow(["gain_measured_km", f"{gain_measured:.4f}"])
     with (FIG_DIR / "conae_duty_cycle.csv").open("w", newline="",
                                                  encoding="utf-8") as fh:
         w = csv.writer(fh)
@@ -314,9 +383,11 @@ def _save_csvs(ta_deg, v_kms, g, q_qubo, rper_climb) -> None:
     with (FIG_DIR / "conae_climb.csv").open("w", newline="",
                                             encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["apogee_pass", "perigee_radius_km"])
+        w.writerow(["apogee_pass", "perigee_radius_km", "fuel_kg", "dv_pass_m_s"])
         for i, rp in enumerate(rper_climb):
-            w.writerow([i, f"{rp:.4f}"])
+            fuel = "" if fuel_climb is None else f"{fuel_climb[i]:.6f}"
+            dv = "" if (dv_pass is None or i == 0) else f"{dv_pass[i-1]:.4f}"
+            w.writerow([i, f"{rp:.4f}", fuel, dv])
 
 
 def _replot() -> None:
@@ -332,17 +403,20 @@ def _replot() -> None:
             if row:
                 ta.append(float(row[1])); g.append(float(row[3]))
                 q.append(int(row[4]))
-    rper = []
+    rper, dvs = [], []
     with climb.open(newline="", encoding="utf-8") as fh:
         rd = csv.reader(fh)
         next(rd, None)
         for row in rd:
             if row:
                 rper.append(float(row[1]))
-    _draw(np.asarray(ta), np.asarray(g), np.asarray(q), np.asarray(rper))
+                if len(row) > 3 and row[3]:
+                    dvs.append(float(row[3]))
+    _draw(np.asarray(ta), np.asarray(g), np.asarray(q), np.asarray(rper),
+          np.asarray(dvs) if dvs else None)
 
 
-def _draw(ta_deg, g, q_qubo, rper_climb) -> None:
+def _draw(ta_deg, g, q_qubo, rper_climb, dv_pass=None) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -364,8 +438,12 @@ def _draw(ta_deg, g, q_qubo, rper_climb) -> None:
                  xytext=(-4, 6), color=C_TEXT, fontsize=8, ha="right", alpha=0.8)
     axA.set_xlabel("apogee burn #")
     axA.set_ylabel("perigee altitude (km)")
-    axA.set_title("(a)  Perigee raised out of the disposal ellipse\n"
-                  f"{N_APOGEES} apogee burns, 8 m/s each (~{N_APOGEES*8} m/s total)",
+    if dv_pass is not None and len(dv_pass):
+        dv_txt = (f"{len(dv_pass)} apogee burns, {np.mean(dv_pass):.1f} m/s each "
+                  f"({np.sum(dv_pass):.0f} m/s total, measured)")
+    else:
+        dv_txt = f"{N_APOGEES} apogee burns of {APOGEE_BURN_S:.0f} s"
+    axA.set_title("(a)  Perigee raised out of the disposal ellipse\n" + dv_txt,
                   color=C_TEXT, fontsize=10.5, pad=8)
     axA.set_xticks(passes)
     for s in axA.spines.values():
@@ -408,8 +486,9 @@ def _draw(ta_deg, g, q_qubo, rper_climb) -> None:
     axB.annotate("perigee", (rp, 0), textcoords="offset points",
                  xytext=(8, 8), color=C_TEXT, fontsize=9, alpha=0.85)
     axB.set_title("(b)  The QUBO fires at apogee to raise perigee\n"
-                  f"{DUTY_CYCLE:.0%} duty: {int(on.sum())} of {on.size} slots "
-                  "(optimal-apse, the dual of Oberth)",
+                  f"{int(on.sum())} of {on.size} slots = {on.sum()/on.size:.1%} duty "
+                  f"(budget <= {DUTY_CYCLE:.0%}; tangential burn at an apsis "
+                  "moves the opposite apsis)",
                   color=C_TEXT, fontsize=10.5, pad=8)
     axB.set_xlabel("x  ($10^3$ km, perifocal — Earth at focus)")
     axB.set_ylabel("y  ($10^3$ km)")

@@ -10,6 +10,7 @@ dwave-system>=1.21
 dwave-preprocessing>=0.6
 minorminer>=0.2
 dwave-networkx>=0.8
+dwave-hybrid>=0.6
 
 # Dev / test
 pytest>=7.4

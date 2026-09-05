@@ -56,7 +56,7 @@ EPOCH = "28 Sep 2003 00:00:00.000"
 
 N_SLOTS = 24
 DUTY_CYCLE = 0.40                  # SMART-1's ~40 %
-N_BURNS = round(DUTY_CYCLE * N_SLOTS)
+N_BURNS = int(np.floor(DUTY_CYCLE * N_SLOTS))   # a ceiling: floor, never round
 SA_NUM_READS = 20_000
 
 # Light "publication" palette, consistent with run_smart1_trajectory_figure.
@@ -256,22 +256,13 @@ def _solve_duty_qubo(g: np.ndarray, k: int) -> np.ndarray:
     dense quadratic; dwave-neal returns the binary optimum, which -- because
     g_j is largest at perigee -- selects the perigee-clustered slots.
     """
-    import dimod
-    import neal
+    from qalunar.qubo.cardinality import solve_cardinality_qubo
 
-    n = g.size
-    lam = 4.0 * float(np.max(np.abs(g)))      # enough to enforce the budget
-    h: dict[int, float] = {}
-    J: dict[tuple[int, int], float] = {}
-    for i in range(n):
-        h[i] = -float(g[i]) + lam * (1.0 - 2.0 * k)
-        for j in range(i + 1, n):
-            J[(i, j)] = 2.0 * lam
-    bqm = dimod.BinaryQuadraticModel(h, J, 0.0, dimod.BINARY)
-    sa = neal.SimulatedAnnealingSampler()
-    ss = sa.sample(bqm, num_reads=SA_NUM_READS, seed=1)
-    best = ss.first.sample
-    return np.array([int(best[i]) for i in range(n)], dtype=np.int64)
+    q, info = solve_cardinality_qubo(g, k, num_reads=SA_NUM_READS, seed=1)
+    print(f"    cardinality QUBO: penalty {info['penalty']:.3g}, coefficient "
+          f"range {info['coefficient_range']:.2g}, budget met {info['budget_met']}, "
+          f"matches top-K {info['matches_top_k']}")
+    return q
 
 
 def _evenly_spread(n: int, k: int) -> np.ndarray:
