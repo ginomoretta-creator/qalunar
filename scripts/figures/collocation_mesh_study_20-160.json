@@ -1,0 +1,73 @@
+{
+  "case": {
+    "r0": [
+      -0.3,
+      0.0
+    ],
+    "v0": [
+      0.0,
+      0.6
+    ],
+    "rf": [
+      0.4,
+      0.2
+    ],
+    "vf": [
+      -0.1,
+      0.0
+    ],
+    "tof": 2.5
+  },
+  "rows": [
+    {
+      "N": 20,
+      "J": 4.899240288419776,
+      "max_defect": 1.236899471734887e-12,
+      "max_bc_error": 0.0,
+      "feasible": true,
+      "slsqp_success": true,
+      "iterations": 119,
+      "time_s": 3.133720300043933,
+      "warm_started": false
+    },
+    {
+      "N": 40,
+      "J": 4.108113042534592,
+      "max_defect": 2.2754242934297508e-11,
+      "max_bc_error": 0.0,
+      "feasible": true,
+      "slsqp_success": true,
+      "iterations": 139,
+      "time_s": 12.415172100067139,
+      "warm_started": true
+    },
+    {
+      "N": 80,
+      "J": 3.8838399152222842,
+      "max_defect": 2.568611989772762e-12,
+      "max_bc_error": 0.0,
+      "feasible": true,
+      "slsqp_success": true,
+      "iterations": 400,
+      "time_s": 98.17803820001427,
+      "warm_started": true
+    },
+    {
+      "N": 160,
+      "J": 2.6025988090689274,
+      "max_defect": 1.191935439237568e-12,
+      "max_bc_error": 0.0,
+      "feasible": true,
+      "slsqp_success": true,
+      "iterations": 580,
+      "time_s": 467.633582499926,
+      "warm_started": true
+    }
+  ],
+  "richardson": {
+    "order_assumed": 4,
+    "J_extrapolated": 2.5171827353253704,
+    "error_of_N40": 0.6320281340256286,
+    "error_of_finest": 0.03393320339634227
+  }
+}

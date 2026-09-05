@@ -401,3 +401,28 @@ class TestSimulatedBifurcation:
         bf = sample_brute_force(q)
         sb = sample_simulated_bifurcation(q, num_reads=100, seed=seed)
         assert sb.energy <= bf.energy * (1 + 1e-9) + 1e-15
+
+
+class TestSimulatedBifurcationPackage:
+    """The published simulated-bifurcation package is the benchmark's SB tier;
+    pinned so an API drift in the package cannot silently return the wrong
+    problem's solution (it did once: the linear term was dropped)."""
+
+    @pytest.fixture(autouse=True)
+    def _need_package(self):
+        pytest.importorskip("simulated_bifurcation")
+
+    def test_recovers_optimum_and_uses_linear_term(self, dyn: PlanarCR3BP) -> None:
+        from qalunar.qubo.scheduling_samplers import sample_simulated_bifurcation_torch
+        rng = np.random.default_rng(0)
+        u = rng.uniform(-0.03, 0.03, 2)
+        target = dyn.propagate(STATE0, T_SPAN, n_steps=2000, control=u)[1][-1]
+        cfg = ThrustSchedulingConfig(thrust_magnitude=0.05, thrust_direction="fixed",
+                                     thrust_vector=u / np.linalg.norm(u))
+        q = build_thrust_scheduling_qubo(dyn, STATE0, target, T_SPAN, n_decision_steps=12, config=cfg)
+        bf = sample_brute_force(q)
+        r = sample_simulated_bifurcation_torch(q, num_reads=128, max_steps=5000, seed=1)
+        assert r.energy == pytest.approx(q.energy(r.schedule))
+        assert r.energy <= bf.energy * (1 + 1e-2) + 1e-15
+        # the all-zero (coast) schedule is what a dropped linear term returns
+        assert r.schedule.sum() > 0

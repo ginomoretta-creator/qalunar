@@ -328,21 +328,30 @@ def sample_simulated_bifurcation_torch(
     if seed is not None:
         torch.manual_seed(seed)
         np.random.seed(seed % (2 ** 32))
-    Q = torch.tensor(np.asarray(qubo.Q, dtype=np.float64))
-    lin = torch.tensor(np.asarray(qubo.linear, dtype=np.float64))
+    # The package mixes its internal float32 tensors with the inputs, so the
+    # polynomial is handed over in float32 (relative precision 1e-7, ample for
+    # coefficients spanning ~1e3 in dynamic range).
+    Q = torch.tensor(np.asarray(qubo.Q, dtype=np.float32))
+    lin = torch.tensor(np.asarray(qubo.linear, dtype=np.float32))
     params = inspect.signature(sbpkg.minimize).parameters
+    # v2 API: minimize((matrix, vector, constant), domain=..., mode=...);
+    # v1 API: minimize(matrix, vector, constant, input_type=..., ballistic=...)
     call: dict[str, Any] = {}
-    for k, v in {
-        "vector": lin, "constant": float(qubo.constant), "input_type": "binary",
-        "domain": "binary", "agents": num_reads, "max_steps": max_steps,
-        "ballistic": ballistic, "heated": heated, "best_only": True,
-        "verbose": False, "dtype": torch.float64,
-    }.items():
+    candidates = {
+        "domain": "binary", "input_type": "binary",
+        "agents": num_reads, "max_steps": max_steps, "best_only": True,
+        "verbose": False, "dtype": torch.float32, "heated": heated,
+        "mode": "ballistic" if ballistic else "discrete", "ballistic": ballistic,
+        "early_stopping": False,
+    }
+    for k, v in candidates.items():
         if k in params:
             call[k] = v
     call.update({k: v for k, v in kwargs.items() if k in params})
     t0 = time.perf_counter()
-    out = sbpkg.minimize(Q, **call)
+    # both API generations take the polynomial as positional (matrix, vector,
+    # constant); v2 collects them as *polynomial_data
+    out = sbpkg.minimize(Q, lin, float(qubo.constant), **call)
     elapsed = time.perf_counter() - t0
     vec = out[0] if isinstance(out, (tuple, list)) else out
     vec = np.asarray(vec.detach().cpu().numpy() if hasattr(vec, "detach") else vec)

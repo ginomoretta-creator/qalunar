@@ -40,7 +40,7 @@ FIG_DIR = Path(__file__).resolve().parent / "figures"
 R0, V0 = np.array([-0.3, 0.0]), np.array([0.0, 0.6])
 RF, VF = np.array([0.4, 0.2]), np.array([-0.1, 0.0])
 TOF = 2.5
-MESHES = [20, 40, 80, 160]
+MESHES = [20, 40, 80, 160]          # override with --meshes
 
 
 def _warm_start(res, n_new: int) -> np.ndarray:
@@ -52,11 +52,16 @@ def _warm_start(res, n_new: int) -> np.ndarray:
 
 
 def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--meshes', type=int, nargs='+', default=MESHES)
+    args = ap.parse_args()
+    meshes = list(args.meshes)
     dyn = PlanarCR3BP()
     rows, prev = [], None
     print(f"{'N':>5} {'J':>14} {'max defect':>11} {'bc err':>9} {'feasible':>9} {'slsqp':>6} {'iters':>6} {'time s':>7}")
     print("-" * 78)
-    for N in MESHES:
+    for N in meshes:
         cfg = DirectCollocationConfig(n_intervals=N, maxiter=1500, tol=1e-10, feasibility_tol=1e-7)
         guess = _warm_start(prev, N) if prev is not None else None
         t0 = time.perf_counter()
@@ -75,13 +80,13 @@ def main() -> None:
     out = {"case": {"r0": R0.tolist(), "v0": V0.tolist(), "rf": RF.tolist(), "vf": VF.tolist(),
                     "tof": TOF}, "rows": rows}
     if all(r["feasible"] for r in rows[-2:]):
-        J1, J2 = J[MESHES[-2]], J[MESHES[-1]]
+        J1, J2 = J[meshes[-2]], J[meshes[-1]]
         J_inf = J2 + (J2 - J1) / (2 ** 4 - 1)          # Richardson, p = 4
         out["richardson"] = {"order_assumed": 4, "J_extrapolated": J_inf,
-                             "error_of_N40": abs(J[40] - J_inf) / abs(J_inf),
+                             "error_of_N40": (abs(J[40] - J_inf) / abs(J_inf)) if 40 in J else None,
                              "error_of_finest": abs(J2 - J_inf) / abs(J_inf)}
         print(f"\n  Richardson (p=4): J_inf = {J_inf:.6e}; N=40 is {100*abs(J[40]-J_inf)/abs(J_inf):.2f} % off, "
-              f"N={MESHES[-1]} is {100*abs(J2-J_inf)/abs(J_inf):.3f} % off")
+              f"N={meshes[-1]} is {100*abs(J2-J_inf)/abs(J_inf):.3f} % off")
     else:
         print("\n  finest meshes not feasible; no extrapolation")
     FIG_DIR.mkdir(parents=True, exist_ok=True)

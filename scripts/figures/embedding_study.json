@@ -1,0 +1,334 @@
+{
+  "targets": {
+    "Pegasus P16 (Advantage)": {
+      "nodes": 5640,
+      "edges": 40484,
+      "largest_clique_ideal": 180
+    },
+    "Zephyr Z12 (Advantage2)": {
+      "nodes": 4800,
+      "edges": 45864,
+      "largest_clique_ideal": 184
+    }
+  },
+  "rows": [
+    {
+      "N": 10,
+      "density": 1.0,
+      "coefficient_range": 246.80180467723423,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 5.7200086303055286e-05,
+      "embedded": true,
+      "max_chain": 2,
+      "mean_chain": 2.0,
+      "physical_qubits": 20
+    },
+    {
+      "N": 10,
+      "density": 1.0,
+      "coefficient_range": 246.80180467723423,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 0.15239130007103086,
+      "embedded": true,
+      "max_chain": 2,
+      "mean_chain": 1.6,
+      "physical_qubits": 16
+    },
+    {
+      "N": 10,
+      "density": 1.0,
+      "coefficient_range": 246.80180467723423,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 3.0199997127056122e-05,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 3.0,
+      "physical_qubits": 30
+    },
+    {
+      "N": 10,
+      "density": 1.0,
+      "coefficient_range": 246.80180467723423,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 0.15013829991221428,
+      "embedded": true,
+      "max_chain": 2,
+      "mean_chain": 1.7,
+      "physical_qubits": 17
+    },
+    {
+      "N": 15,
+      "density": 1.0,
+      "coefficient_range": 391.0259842778613,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 2.1300045773386955e-05,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 3.0,
+      "physical_qubits": 45
+    },
+    {
+      "N": 15,
+      "density": 1.0,
+      "coefficient_range": 391.0259842778613,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 0.35274040000513196,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 2.4,
+      "physical_qubits": 36
+    },
+    {
+      "N": 15,
+      "density": 1.0,
+      "coefficient_range": 391.0259842778613,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 2.059992402791977e-05,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 3.0,
+      "physical_qubits": 45
+    },
+    {
+      "N": 15,
+      "density": 1.0,
+      "coefficient_range": 391.0259842778613,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 0.2774393999716267,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 1.9333333333333333,
+      "physical_qubits": 29
+    },
+    {
+      "N": 20,
+      "density": 1.0,
+      "coefficient_range": 548.9830087184832,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 1.7700018361210823e-05,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 3.0,
+      "physical_qubits": 60
+    },
+    {
+      "N": 20,
+      "density": 1.0,
+      "coefficient_range": 548.9830087184832,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 1.0883793999673799,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 2.7,
+      "physical_qubits": 54
+    },
+    {
+      "N": 20,
+      "density": 1.0,
+      "coefficient_range": 548.9830087184832,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 2.52000754699111e-05,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 3.0,
+      "physical_qubits": 60
+    },
+    {
+      "N": 20,
+      "density": 1.0,
+      "coefficient_range": 548.9830087184832,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 0.7497110000113025,
+      "embedded": true,
+      "max_chain": 3,
+      "mean_chain": 2.45,
+      "physical_qubits": 49
+    },
+    {
+      "N": 50,
+      "density": 1.0,
+      "coefficient_range": 1543.4580476617984,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 2.050003968179226e-05,
+      "embedded": true,
+      "max_chain": 6,
+      "mean_chain": 5.8,
+      "physical_qubits": 290
+    },
+    {
+      "N": 50,
+      "density": 1.0,
+      "coefficient_range": 1543.4580476617984,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 10.05065220000688,
+      "embedded": true,
+      "max_chain": 8,
+      "mean_chain": 5.66,
+      "physical_qubits": 283
+    },
+    {
+      "N": 50,
+      "density": 1.0,
+      "coefficient_range": 1543.4580476617984,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 2.559996210038662e-05,
+      "embedded": true,
+      "max_chain": 5,
+      "mean_chain": 5.0,
+      "physical_qubits": 250
+    },
+    {
+      "N": 50,
+      "density": 1.0,
+      "coefficient_range": 1543.4580476617984,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 14.940418799989857,
+      "embedded": true,
+      "max_chain": 7,
+      "mean_chain": 5.22,
+      "physical_qubits": 261
+    },
+    {
+      "N": 100,
+      "density": 1.0,
+      "coefficient_range": 3211.304437557412,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 5.859998054802418e-05,
+      "embedded": true,
+      "max_chain": 10,
+      "mean_chain": 9.82,
+      "physical_qubits": 982
+    },
+    {
+      "N": 100,
+      "density": 1.0,
+      "coefficient_range": 3211.304437557412,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 111.75383860000875,
+      "embedded": true,
+      "max_chain": 22,
+      "mean_chain": 13.66,
+      "physical_qubits": 1366
+    },
+    {
+      "N": 100,
+      "density": 1.0,
+      "coefficient_range": 3211.304437557412,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 3.5199918784201145e-05,
+      "embedded": true,
+      "max_chain": 8,
+      "mean_chain": 8.0,
+      "physical_qubits": 800
+    },
+    {
+      "N": 100,
+      "density": 1.0,
+      "coefficient_range": 3211.304437557412,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 101.37221019994467,
+      "embedded": true,
+      "max_chain": 16,
+      "mean_chain": 10.42,
+      "physical_qubits": 1042
+    },
+    {
+      "N": 150,
+      "density": 1.0,
+      "coefficient_range": 4882.643467689117,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 4.9299909733235836e-05,
+      "embedded": true,
+      "max_chain": 14,
+      "mean_chain": 13.826666666666666,
+      "physical_qubits": 2074
+    },
+    {
+      "N": 150,
+      "density": 1.0,
+      "coefficient_range": 4882.643467689117,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 151.1352385999635,
+      "embedded": false
+    },
+    {
+      "N": 150,
+      "density": 1.0,
+      "coefficient_range": 4882.643467689117,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 5.319993942975998e-05,
+      "embedded": true,
+      "max_chain": 11,
+      "mean_chain": 11.0,
+      "physical_qubits": 1650
+    },
+    {
+      "N": 150,
+      "density": 1.0,
+      "coefficient_range": 4882.643467689117,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 143.074358999962,
+      "embedded": false
+    },
+    {
+      "N": 200,
+      "density": 1.0,
+      "coefficient_range": 6553.499246885232,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "clique",
+      "time_s": 3.360002301633358e-05,
+      "embedded": false
+    },
+    {
+      "N": 200,
+      "density": 1.0,
+      "coefficient_range": 6553.499246885232,
+      "topology": "Pegasus P16 (Advantage)",
+      "method": "heuristic",
+      "time_s": 158.78374739992432,
+      "embedded": false
+    },
+    {
+      "N": 200,
+      "density": 1.0,
+      "coefficient_range": 6553.499246885232,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "clique",
+      "time_s": 3.560003824532032e-05,
+      "embedded": false
+    },
+    {
+      "N": 200,
+      "density": 1.0,
+      "coefficient_range": 6553.499246885232,
+      "topology": "Zephyr Z12 (Advantage2)",
+      "method": "heuristic",
+      "time_s": 150.92739870003425,
+      "embedded": false
+    }
+  ]
+}
