@@ -27,7 +27,7 @@
       "feasible": true,
       "slsqp_success": true,
       "iterations": 119,
-      "time_s": 3.133720300043933,
+      "time_s": 2.2087580000516027,
       "warm_started": false
     },
     {
@@ -38,7 +38,7 @@
       "feasible": true,
       "slsqp_success": true,
       "iterations": 139,
-      "time_s": 12.415172100067139,
+      "time_s": 9.37307869992219,
       "warm_started": true
     },
     {
@@ -49,7 +49,7 @@
       "feasible": true,
       "slsqp_success": true,
       "iterations": 400,
-      "time_s": 98.17803820001427,
+      "time_s": 75.58059459994547,
       "warm_started": true
     },
     {
@@ -60,14 +60,19 @@
       "feasible": true,
       "slsqp_success": true,
       "iterations": 580,
-      "time_s": 467.633582499926,
+      "time_s": 421.4882311000256,
+      "warm_started": true
+    },
+    {
+      "N": 320,
+      "J": 4.43733749170457,
+      "max_defect": 5.706723664455904e-08,
+      "max_bc_error": 0.0,
+      "feasible": false,
+      "slsqp_success": false,
+      "iterations": 1500,
+      "time_s": 7610.1536531000165,
       "warm_started": true
     }
-  ],
-  "richardson": {
-    "order_assumed": 4,
-    "J_extrapolated": 2.5171827353253704,
-    "error_of_N40": 0.6320281340256286,
-    "error_of_finest": 0.03393320339634227
-  }
+  ]
 }
