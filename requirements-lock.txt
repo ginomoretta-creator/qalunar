@@ -1,3 +1,5 @@
+# Editable Git install with no remote (qalunar==0.1.0)
+# qalunar itself, installed in editable mode: pip install -e .
 annotated-types==0.7.0
 Authlib==1.7.2
 certifi==2026.5.20
@@ -45,17 +47,17 @@ pydantic_core==2.46.4
 Pygments==2.20.0
 pyparsing==3.3.2
 PySocks==1.7.1
-pytest==9.0.3
 pytest-cov==7.1.0
+pytest==9.0.3
 python-dateutil==2.9.0.post0
-# Editable Git install with no remote (qalunar==0.1.0)
-# qalunar itself, installed in editable mode: pip install -e .
--e .
 requests==2.34.2
 scipy==1.17.1
+simulated-bifurcation==2.0.0
 six==1.17.0
+torch==2.14.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.7.0
 Werkzeug==3.1.8
 zipp==4.1.0
+-e .
