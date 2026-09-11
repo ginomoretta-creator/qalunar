@@ -177,10 +177,12 @@ def main() -> None:
     console = find_gmat_console()
     if not console.exists():
         raise SystemExit(f"GmatConsole not found at {console}")
-    # Coarse synodic-month scan; refine around the dip in 0.25 d steps. With
-    # XE_KG = 3.5 the encounter falls at +23.5 d (24 Jan 2026 12:00), perilune
-    # ~13,000 km -- the epoch hardcoded in run_conae_lunar_trajectory. NOTE: the
-    # phasing is mass-sensitive, so re-scan if the propulsion config changes.
+    # Coarse synodic-month scan; refine around the dip in 0.25 d steps. This
+    # scan predates the corrected reference ellipse (250 km injection perigee,
+    # DualCone eclipses): run_conae_lunar_trajectory now departs 23 Jan 2026
+    # 22:00, the slowest arrival of a 2-h scan over both encounter windows
+    # (periselene ~31,600 km, the minimum available). NOTE: the phasing is
+    # mass- and ellipse-sensitive, so re-scan if either changes.
     base = "01 Jan 2026 00:00:00.000"
     print("scanning launch epochs (Phase 1 + Phase 2 spiral) ...")
     print(f"{'epoch offset [d]':>16} {'min Moon [km]':>14} {'max apo [km]':>14} "

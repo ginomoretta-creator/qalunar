@@ -54,19 +54,49 @@ states in `scripts/figures/conae_phase2_binary.csv`.
 | reference energy-QUBO capture at 100 % duty (16 slots, 2 d) | 14/16 slots, 389 m/s, 20.7 kWh, flown E +0.045, **not captured** after 50 d |
 
 Direct capture from a duty-limited apogee-raising spiral is infeasible for this
-vehicle by a factor ~50. The continuous-thrust trace re-flown on the same
-baseline (`run_conae_lunar_trajectory.py`) brakes to E = −0.075 but is unbound
-again after 50 days (E = +0.97, 473,550 km from the Moon). A bound lunar orbit
-for this vehicle requires a low-energy / resonant approach, which is the
-natural next QUBO (choice of resonant sequence) and is left as future work.
+vehicle by a factor ~50 (fast, distant flyby after the 61-day wait).
+
+### Continuous-thrust reference (`run_conae_lunar_trajectory.py`)
+
+The departure epoch is the phasing of the encounter. A 2-h scan over the two
+encounter windows of the spiral (23–24 Jan, 5–7 Feb 2026) gives a minimum
+periselene of ~31,600 km; 23 Jan 22:00 is the slowest arrival.
+
+| quantity | value |
+|---|---|
+| arrival periselene | 31,618 km, E = −0.002 km²/s² (day 16.41) |
+| capture | apse-targeted braking arcs: bind at periselene with ra < 40,000 km, then rp → 12,000 km at aposelene, ra → 20,000 km at periselene |
+| braking | 362 m/s, 0.420 kg Xe, 34.3 h thrust-on, 16.9 kWh, over 9.69 d |
+| vs 15 W budget over the same 9.69 d | 4.9× the allowed thrust time (fast flyby: ~50×) |
+| final orbit | 9,100 × 19,900 km, E = −0.169 km²/s² |
+| 50-day coast | 27 revolutions, 100 % inside the SOI, periselene 9,278 → 2,775 km (min altitude 1,038 km) |
+
+Earlier attempts, all flown in GMAT and rejected: a fixed 25-h brake (the
+previous version: E = −0.075, unbound again after 50 days); a single long
+brake from periselene (E = −0.114 but the periselene collapses to impact);
+apse arcs from the 24 Jan 12:00 arrival (periselene 45,400 km: the first
+bound orbit reaches 195,000 km and is lost to the Earth's tide); tighter
+targets (10,000 × 15,000 km and 8,000 × 12,000 km: the aposelene brake
+overshoots the periselene, impact). The earlier "stable" figure came from the
+uncorrected ellipse (sub-surface perigee) and a 12.7-day coast.
 
 ## SMART-1 (`run_smart1_capture.py`, `run_smart1_trajectory_figure.py`)
 
 With E_target −0.08 over a 3-day window the energy QUBO fires all 16 slots and
 reaches E = −0.026 km²/s² (a = 94,800 km) with the spacecraft 73,700 km from
-the Moon — bound by two-body energy, outside the Hill sphere. The earlier cached
-schedule (E_target −0.010) flew as a flyby in the hero figure. A durable
-binary capture needs the multi-window scheme (`run_gmat_capture_windows.py`).
+the Moon — bound by two-body energy, outside the Hill sphere. The figure now
+flies the same 3-day window (it flew 2 days before; the defaults of both
+scripts were aligned with the cached schedule).
+
+No single-passage schedule of this thruster captures SMART-1 durably: a
+tangential thruster removes at most a_T·s of specific energy along a path s,
+and at a_T ≈ 0.29 mm/s² one passage near the Moon is worth ~0.05 km²/s²,
+against ~0.10 needed to bring the aposelene inside the Hill sphere. Continued
+braking from SOI entry or from periselene for up to 30 days was flown in GMAT
+and loses the spacecraft in every case. SMART-1 itself needed weeks of
+resonant approach.
+
 Eclipses are neglected in the SMART-1 reproduction because the cached encounter
 phasing was found with continuous power; with DualCone the spiral timing shifts
-and the encounter is lost — to be stated in the manuscript.
+and the encounter is lost (stated in the manuscript). The 654 × 35,885 km GTO
+is approximate; the actual injection was 742 × 36,016 km (ESA).
