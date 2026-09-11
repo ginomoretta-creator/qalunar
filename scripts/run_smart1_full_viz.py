@@ -40,7 +40,7 @@ GTO_PERIGEE_ALT, GTO_APOGEE_ALT, INC_DEG = 654.0, 35_885.0, 7.0
 THRUST_MN, ISP_S, DRY_MASS_KG, XE_LOADED_KG = 88.0, 1650.0, 285.0, 82.0
 ENCOUNTER_EPOCH = "04 Oct 2003 00:00:00.000"
 MOON_SOI_KM = 66_100.0
-CAPTURE_WINDOW_DAYS = 2.0
+CAPTURE_WINDOW_DAYS = 3.0
 N_SLOTS = 16
 # Short: the one-pass capture is weak (E just below zero, apolune far
 # outside the SOI), so over weeks Earth perturbs it back out -- a longer

@@ -47,9 +47,9 @@ GM_LUNA = 4_902.8005821478
 MOON_RADIUS_KM = 1_737.4
 MOON_SOI_KM = 66_100.0
 
-CAPTURE_WINDOW_DAYS = 2.0
+CAPTURE_WINDOW_DAYS = 3.0
 N_SLOTS = 16
-E_TARGET = -0.010           # km^2/s^2: safely bound
+E_TARGET = -0.080           # km^2/s^2 (the cached smart1_capture.csv was solved with this)
 # Tiebreaker only: must be << the per-slot energy benefit ~2|dE||d| ~ 2e-4,
 # or the fuel term swamps the capture objective and the QUBO refuses to brake.
 FUEL_WEIGHT = 1e-5

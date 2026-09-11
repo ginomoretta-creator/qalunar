@@ -8,7 +8,8 @@ real DE-series ephemerides (Earth 4x4 + Luna + Sun), and compares the
 resulting transfer budget against the flown mission.
 
 Published SMART-1 inputs (eoPortal / ESA / Milligan 2005):
-  * GTO 654 x 35,885 km altitude, i = 7 deg
+  * GTO 654 x 35,885 km altitude, i = 7 deg (approximate; the actual injection
+    was 742 x 36,016 km, ESA SMART-1 launch-phase page)
   * PPS-1350 Hall thruster: 88 mN, Isp 1650 s, ~1.9 kW
   * wet mass 367 kg, 82 kg xenon loaded (~75 kg used to the Moon)
   * ~14 months to lunar capture, ~3.5 km/s total (spiral + capture)
