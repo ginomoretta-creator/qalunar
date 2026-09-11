@@ -249,21 +249,27 @@ def _plot(data: np.ndarray) -> None:
     fig.patch.set_facecolor(C_BG)
 
     # ---------- (a) Earth-centred inertial ----------
+    # The trace stops at the lunar SOI entry: after the encounter the spacecraft
+    # is not held by the Moon, and drawing its Earth-relative path would read as
+    # a return to an Earth orbit. Panel (b) shows what happens inside the SOI.
     xe, ye = sat_e[:, 0] * 1e-3, sat_e[:, 1] * 1e-3      # 1000 km units
     mxe, mye = moon_e[:, 0] * 1e-3, moon_e[:, 1] * 1e-3
     _style_axes(axA)
-    # lunar orbit reference ring + Moon at encounter (closest approach)
-    enc = int(np.argmin(np.linalg.norm(sat_m, axis=1)))
+    rm_all = np.linalg.norm(sat_m, axis=1)
+    enc = int(np.argmax(rm_all < MOON_SOI_KM))           # first sample inside the SOI
     r_moon = np.hypot(mxe[enc], mye[enc])
     axA.add_patch(plt.Circle((0, 0), r_moon, fill=False, ec=C_FAINT, ls=(0, (6, 6)),
                              lw=1.0, alpha=0.7, zorder=2))
-    _glow(axA, xe, ye, C_SPIRAL, lw=1.3, zorder=3)
+    axA.add_patch(plt.Circle((mxe[enc], mye[enc]), MOON_SOI_KM * 1e-3, fill=False,
+                             ec=C_MOON, ls=(0, (3, 3)), lw=0.9, zorder=6))
+    _glow(axA, xe[:enc + 1], ye[:enc + 1], C_SPIRAL, lw=1.3, zorder=3)
     _disk(axA, 0, 0, EARTH_RADIUS_KM * 1e-3, C_EARTH, glow=C_EARTH_GLOW, zorder=8)
     _disk(axA, mxe[enc], mye[enc], MOON_RADIUS_KM * 1e-3 * 3.0, C_MOON, zorder=7)
     axA.scatter([xe[0]], [ye[0]], s=24, color=C_TEXT, edgecolors="white",
                 lw=0.6, zorder=9)
     axA.annotate("GTO", (xe[0], ye[0]), textcoords="offset points",
-                 xytext=(8, -10), color=C_TEXT, fontsize=8)
+                 xytext=(12, 12), color=C_TEXT, fontsize=8, zorder=10,
+                 bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.85))
     axA.annotate("Moon\n(encounter)", (mxe[enc], mye[enc]),
                  textcoords="offset points", xytext=(10, 6),
                  color=C_TEXT, fontsize=8)
