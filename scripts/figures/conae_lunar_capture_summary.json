@@ -1,0 +1,23 @@
+{
+ "departure_epoch": "23 Jan 2026 22:00:00.000",
+ "arrival_periselene_km": 31618.0,
+ "arrival_day": 16.41,
+ "capture_span_days": 9.69,
+ "capture_thrust_on_h": 34.3,
+ "capture_dv_m_s": 362.0,
+ "capture_xenon_kg": 0.42,
+ "capture_kwh": 16.9,
+ "capture_over_15W_budget": 4.9,
+ "coast_days": 50.0,
+ "coast_periselene_passages": 27,
+ "coast_periselene_first_km": 9278.0,
+ "coast_periselene_last_km": 2775.0,
+ "coast_min_altitude_km": 1038.0,
+ "coast_max_distance_km": 26691.0,
+ "coast_fraction_inside_soi": 1.0,
+ "targets_km": {
+  "bind_ra": 40000.0,
+  "rp": 12000.0,
+  "ra": 20000.0
+ }
+}

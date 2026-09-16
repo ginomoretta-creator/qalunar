@@ -380,6 +380,29 @@ def _summary(data: np.ndarray) -> None:
           f"{rc[mins[0]]:,.0f} -> {rc[mins[-1]]:,.0f} km, min altitude {rc.min() - MOON_RADIUS_KM:,.0f} km, "
           f"max {rc.max():,.0f} km, inside SOI {100 * np.mean(rc < MOON_SOI_KM):.0f} %")
     print(f"  (spiral + Phase 1 xenon {fuel[0] - fuel[spiral_idx[-1] + 1]:.3f} kg)")
+    # Cache the quoted numbers next to the ephemeris so they are traceable.
+    import json
+    summary = {
+        "departure_epoch": ENCOUNTER_EPOCH,
+        "arrival_periselene_km": round(float(rm[enc]), 1),
+        "arrival_day": round(float(days[enc]), 2),
+        "capture_span_days": round(float(span_d), 2),
+        "capture_thrust_on_h": round(float(on_h), 1),
+        "capture_dv_m_s": round(float(dv), 1),
+        "capture_xenon_kg": round(float(xe), 3),
+        "capture_kwh": round(float(on_h * OPERATING_POWER_W / 1000), 1),
+        "capture_over_15W_budget": round(float(on_h / allowed_h), 1),
+        "coast_days": round(float(dc[-1] - dc[0]), 1),
+        "coast_periselene_passages": int(len(mins)),
+        "coast_periselene_first_km": round(float(rc[mins[0]]), 0),
+        "coast_periselene_last_km": round(float(rc[mins[-1]]), 0),
+        "coast_min_altitude_km": round(float(rc.min() - MOON_RADIUS_KM), 0),
+        "coast_max_distance_km": round(float(rc.max()), 0),
+        "coast_fraction_inside_soi": round(float(np.mean(rc < MOON_SOI_KM)), 3),
+        "targets_km": {"bind_ra": RA_BIND_KM, "rp": RP_TARGET_KM, "ra": RA_TARGET_KM},
+    }
+    (FIG_DIR / "conae_lunar_capture_summary.json").write_text(
+        json.dumps(summary, indent=1), encoding="utf-8")
 
 
 def _plot(data: np.ndarray) -> None:
