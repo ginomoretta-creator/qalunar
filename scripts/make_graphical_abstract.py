@@ -71,7 +71,18 @@ def main() -> None:
     # lunar orbit and the Moon at the arrival apogee direction
     ax.add_patch(Circle((0, 0), MOON_DIST * 1e-3, fill=False, ec="#2a3550", ls=(0, (5, 6)),
                         lw=1.0, zorder=2))
-    glow_disk(ax, MOON_DIST * 1e-3, 0, MOON_R * 1e-3 * 4.5, "#c9ced8", halo=3.5)
+    glow_disk(ax, MOON_DIST * 1e-3, 0, MOON_R * 1e-3 * 2.2, "#c9ced8", halo=4.0)
+
+    # the bound lunar orbit of the continuous-thrust reference trace (Fig. 2):
+    # the first revolutions of its 50-day coast, Moon-relative, from the cached
+    # ephemeris. Drawn faint and labelled: the binary schedule does not capture.
+    eph = np.load(FIG_DIR / "conae_lunar_trajectory.npz")["ephem"]
+    days, xm, ym = eph[:, 0], eph[:, 4] * 1e-3, eph[:, 5] * 1e-3
+    t0 = days[-1] - 50.0
+    sel = (days >= t0) & (days <= t0 + 14.0)          # about eight revolutions
+    ax.plot(MOON_DIST * 1e-3 - xm[sel], ym[sel], color="#dfe6f2", lw=0.7, alpha=0.7, zorder=7)
+    ax.text(422, -36, "bound lunar orbit of the\ncontinuous-thrust reference",
+            color=C_DIM, fontsize=9, ha="right", va="top", zorder=7, linespacing=1.3)
 
     # the 36 ellipses: dim teal at the start, bright at lunar distance
     cmap = LinearSegmentedColormap.from_list("climb", ["#1a5f6e", "#2fb7c9", "#c7f3ff"])
