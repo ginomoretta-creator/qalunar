@@ -71,16 +71,27 @@ def main() -> None:
     # lunar orbit and the Moon at the arrival apogee direction
     ax.add_patch(Circle((0, 0), MOON_DIST * 1e-3, fill=False, ec="#2a3550", ls=(0, (5, 6)),
                         lw=1.0, zorder=2))
-    glow_disk(ax, MOON_DIST * 1e-3, 0, MOON_R * 1e-3 * 2.2, "#c9ced8", halo=4.0)
-
-    # the bound lunar orbit of the continuous-thrust reference trace (Fig. 2):
-    # the first revolutions of its 50-day coast, Moon-relative, from the cached
-    # ephemeris. Drawn faint and labelled: the binary schedule does not capture.
+    # The continuous-thrust reference trace (Fig. 2), from the cached ephemeris:
+    # its final approach from the last apogee to the Moon, and the first
+    # revolutions of the bound orbit. Rotated so that its Moon at SOI entry lies
+    # on the scene's +x axis; drawn faint and labelled, because the binary
+    # schedule does not capture.
     eph = np.load(FIG_DIR / "conae_lunar_trajectory.npz")["ephem"]
-    days, xm, ym = eph[:, 0], eph[:, 4] * 1e-3, eph[:, 5] * 1e-3
+    days, se, sm = eph[:, 0], eph[:, 1:3] * 1e-3, eph[:, 4:6] * 1e-3
+    rm = np.hypot(sm[:, 0], sm[:, 1])
+    i_soi = int(np.argmax(rm < 66.1))
+    moon = se[i_soi] - sm[i_soi]
+    ang = -np.arctan2(moon[1], moon[0])
+    rot = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
+    se_r, sm_r = se @ rot.T, sm @ rot.T
+    moon_x = float(np.hypot(*moon))
+    r_e = np.hypot(se_r[:, 0], se_r[:, 1])
     t0 = days[-1] - 50.0
     sel = (days >= t0) & (days <= t0 + 14.0)          # about eight revolutions
-    ax.plot(MOON_DIST * 1e-3 - xm[sel], ym[sel], color="#dfe6f2", lw=0.7, alpha=0.7, zorder=7)
+    ax.plot(moon_x + sm_r[sel, 0], sm_r[sel, 1], color="#dfe6f2", lw=0.7, alpha=0.7, zorder=7)
+    cap = (days >= days[i_soi]) & (days < t0)          # SOI entry, braking arcs, to capture
+    ax.plot(moon_x + sm_r[cap, 0], sm_r[cap, 1], color="#dfe6f2", lw=0.9, alpha=0.55, zorder=7)
+    glow_disk(ax, moon_x, 0, MOON_R * 1e-3 * 2.2, "#c9ced8", halo=4.0)
     ax.text(422, -36, "bound lunar orbit of the\ncontinuous-thrust reference",
             color=C_DIM, fontsize=9, ha="right", va="top", zorder=7, linespacing=1.3)
 
